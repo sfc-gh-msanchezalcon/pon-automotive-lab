@@ -36,6 +36,20 @@ By the end of this lab, your dashboard will show:
 
 This is real RDW data, analyzed in real-time via Dynamic Tables, visualized in Streamlit.
 
+## Module-to-Business Mapping
+
+Each lab module directly addresses a specific Pon business challenge:
+
+| Module | Pon's Pain Point | Snowflake Solution | Business Outcome |
+|--------|-----------------|-------------------|------------------|
+| **1. Schema Design** | Data silos prevent unified view | Medallion architecture | Single source of truth for leadership |
+| **2. API Ingestion** | Manual CSV exports are slow | External Access Integration | Real-time RDW data without intermediaries |
+| **3. Dynamic Tables** | Overnight batch jobs create stale data | Automatic refresh with TARGET_LAG | Always-current target models (brandst per postcode, laadpalen per postcode) |
+| **4. Cost Control** | 6-hour queries during peak usage | Multi-cluster + Resource Monitors | No one waits, predictable costs |
+| **5. Data Sharing** | Manual exports to dealers are ungoverned | Secure Data Sharing | Live, governed access for dealer network |
+| **6. Marketplace** | Need external context (weather, demographics) | 2,500+ datasets, zero ETL | Enrich internal data instantly |
+| **7. Dashboard** | No unified view for leadership | Streamlit in Snowflake | Answer the core business question directly |
+
 ## What You Will Build
 
 A complete data engineering solution using **real Dutch government data**, all within Snowflake. No external tools, no complex orchestration, no cluster management.

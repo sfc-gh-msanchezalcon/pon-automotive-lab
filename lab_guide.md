@@ -80,6 +80,12 @@ You're ready to begin.
 
 **Duration: 10 minutes**
 
+> **Why This Matters for Pon**
+> 
+> Pon currently struggles with **data silos** - vehicle registration data, fuel type data, and charging infrastructure data live in separate systems with no unified view. Leadership cannot answer basic questions like "Which region has the fastest EV growth?" without manual data gathering from multiple sources.
+> 
+> The **medallion architecture** (RAW -> CURATED -> ANALYTICS) creates a single source of truth that leadership can trust for strategic decisions about EV inventory allocation and charging infrastructure partnerships. This directly addresses the PDF use case objective.
+
 ### The Data Architecture
 
 We'll create a **medallion architecture** with three layers:
@@ -184,6 +190,12 @@ You should see 3 schemas and 5 tables.
 ## Module 2: API Data Ingestion
 
 **Duration: 25 minutes**
+
+> **Why This Matters for Pon**
+> 
+> The PDF use case specifies **5 RDW datasets** as the authoritative source for Dutch vehicle registrations. Today, getting this data requires manual CSV exports, FTP transfers, and error-prone processes that delay insights by days.
+> 
+> By pulling directly from RDW APIs into Snowflake, Pon gets **real-time government data** without intermediaries. The specific columns we extract (kenteken, brandstof_omschrijving, parkingaddressreference, chargingpointcapacity) are exactly what the PDF requires to answer: *"Welke regio heeft de snelste groei van EV's?"*
 
 This is where Snowflake shines. We'll fetch data directly from external APIs **without any external tools**: no Python scripts on your laptop, no AWS Lambda, no Azure Functions.
 
@@ -395,6 +407,14 @@ To demonstrate the "6-hour queries to seconds" story:
 
 **Duration: 20 minutes**
 
+> **Why This Matters for Pon**
+> 
+> The PDF defines two **target data models** (DOEL) that Pon needs for strategic planning:
+> - **brandst per postcode per datum**: Tracks fuel type registrations over time by region - essential for understanding EV adoption velocity
+> - **Laadpalen per postcode**: Maps charging infrastructure to postal codes - essential for identifying infrastructure gaps
+> 
+> Today, creating these models requires overnight batch jobs that are often stale by morning. **Dynamic Tables** automatically keep these models fresh - no schedulers, no monitoring dashboards, no 3am alerts. When RDW updates their data, Pon's analytics update automatically.
+
 Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh — no external orchestration required.
 
 > **💡 Talking Point:** With Dynamic Tables, there's no separate scheduler to configure or monitor. Snowflake handles the refresh logic, dependencies, and incremental updates automatically. You just write SQL.
@@ -545,6 +565,12 @@ You should see:
 
 **Duration: 15 minutes**
 
+> **Why This Matters for Pon**
+> 
+> Pon's current analytics platform suffers from **6-hour query times** during peak periods when multiple dealers and analysts run reports simultaneously. Users get frustrated, sessions timeout, and business decisions get delayed.
+> 
+> **Multi-cluster warehouses** ensure that when 50 dealers query simultaneously during a Monday morning sales meeting, no one waits - Snowflake automatically scales out. **Resource monitors** prevent unexpected cloud bills - a critical concern when migrating from predictable on-premise infrastructure to cloud consumption models.
+
 Now let's enhance our warehouse with scaling and cost controls.
 
 ### 4.1 Enable Multi-Cluster Scaling
@@ -620,6 +646,12 @@ Your warehouse should show:
 ## Module 5: Secure Data Sharing
 
 **Duration: 15 minutes**
+
+> **Why This Matters for Pon**
+> 
+> Pon's dealer network needs access to regional EV adoption data for inventory planning - which models to stock, where to invest in charging partnerships. Today, this requires **manual CSV exports** emailed to dealers, creating ungoverned copies that quickly become stale and inconsistent.
+> 
+> **Secure Data Sharing** gives dealers live, governed access to curated analytics. When Pon updates their data, dealers see it immediately. When a dealer relationship ends, access is revoked in seconds - no chasing down spreadsheet copies. This transforms data from a liability into a strategic asset for the dealer network.
 
 This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
 
@@ -732,6 +764,12 @@ RETURNS STRING -> CASE WHEN IS_ROLE_IN_SESSION('ADMIN') THEN val ELSE '****' END
 ## Module 6: Marketplace Data Enrichment
 
 **Duration: 15 minutes**
+
+> **Why This Matters for Pon**
+> 
+> To truly answer *"does EV growth correlate with charging infrastructure?"*, Pon needs external context: **weather data** (cold weather reduces EV range, affecting buyer confidence), **demographic data** (income levels affect EV purchasing power), and **energy prices** (electricity costs impact total cost of ownership vs. petrol).
+> 
+> Acquiring and integrating this data traditionally requires procurement, contracts, ETL pipelines, and ongoing maintenance. **Snowflake Marketplace** provides instant access to 2,500+ datasets that appear in your account immediately - no ETL, no storage costs for shared data, no ongoing data pipeline maintenance.
 
 In the previous module, you shared YOUR data with partners. Now let's do the reverse: **consume external data** to enrich your analysis. Together, Data Sharing (data out) and Marketplace (data in) represent Snowflake's complete data collaboration story.
 
@@ -885,6 +923,17 @@ LIMIT 20;
 ## Module 7: Streamlit Dashboard
 
 **Duration: 15 minutes**
+
+> **Why This Matters for Pon**
+> 
+> The PDF use case has a clear objective: *"Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?"* (Which region has the fastest EV growth and does that correlate with available charging points?)
+> 
+> This dashboard **directly answers that question** with interactive visualizations showing:
+> - Regional EV adoption rankings (which regions lead the transition)
+> - Infrastructure gap analysis (where charging supply lags EV demand)
+> - Growth trends (how quickly is adoption accelerating)
+> 
+> Leadership gets a single screen to make strategic decisions about dealership inventory, charging partnerships, and regional marketing focus - no waiting for analysts to pull reports.
 
 Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment. This is the visualization layer that brings everything together — and **answers the business question**.
 

@@ -226,19 +226,25 @@ GROUP BY 1, 2;
 -- TARGET MODEL: Laadpalen per Postcode (from PDF requirements)
 -- =============================================================================
 -- Answers: "Where is charging infrastructure concentrated?"
--- Note: The RDW datasets have different primary keys - we aggregate charging
--- capacity by area manager instead of postal code join
+-- Join: Parkeeradres.parkingaddressreference = SPECIFICATIES.areamanagerid
+-- Then aggregate charging capacity by postal code from Parkeeradres.zipcode
 
 CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.LAADPALEN_PER_POSTCODE
     TARGET_LAG = '1 hour'
     WAREHOUSE = PON_ANALYTICS_WH
-    COMMENT = 'Charging points by area manager - from RDW API'
+    COMMENT = 'Charging points per postal code - joins Parkeeradres with SPECIFICATIES via parkingaddressreference=areamanagerid'
 AS
 SELECT 
-    area_manager_id AS postcode,
-    total_charging_points AS aantal
-FROM CURATED.CHARGING_BY_AREA
-WHERE total_charging_points > 0;
+    LEFT(p.zipcode, 4) AS postcode,
+    SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
+FROM RAW.PARKING_ADDRESS_RAW p
+JOIN RAW.CHARGING_CAPACITY_RAW c 
+    ON p.RAW_JSON:parkingaddressreference::STRING = c.areamanagerid
+WHERE p.parkingaddresstype = 'F'
+  AND p.zipcode IS NOT NULL 
+  AND p.zipcode != ''
+  AND TRY_CAST(c.chargingpointcapacity AS INT) > 0
+GROUP BY LEFT(p.zipcode, 4);
 
 -- =============================================================================
 -- Verify Dynamic Tables

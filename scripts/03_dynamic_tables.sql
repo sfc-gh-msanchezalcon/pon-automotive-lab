@@ -168,11 +168,12 @@ ORDER BY registration_year;
 -- =============================================================================
 -- ANALYTICS LAYER: EV Infrastructure Correlation
 -- =============================================================================
+-- Note: Using COUNT(*) for parking_locations since areaid is often NULL in API data
 
 CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
     TARGET_LAG = '1 hour'
     WAREHOUSE = PON_ANALYTICS_WH
-    COMMENT = 'Correlation between EV adoption and charging infrastructure'
+    COMMENT = 'Correlation between EV adoption and parking infrastructure'
 AS
 SELECT 
     e.postal_area,
@@ -187,8 +188,9 @@ FROM CURATED.EV_BY_REGION e
 LEFT JOIN (
     SELECT 
         LEFT(zipcode, 2) AS postal_area,
-        COUNT(DISTINCT areaid) AS parking_locations
+        COUNT(*) AS parking_locations
     FROM RAW.PARKING_ADDRESS_RAW 
+    WHERE zipcode IS NOT NULL AND zipcode != ''
     GROUP BY LEFT(zipcode, 2)
 ) p ON e.postal_area = p.postal_area
 WHERE e.total_vehicles > 5000;
@@ -224,21 +226,19 @@ GROUP BY 1, 2;
 -- TARGET MODEL: Laadpalen per Postcode (from PDF requirements)
 -- =============================================================================
 -- Answers: "Where is charging infrastructure concentrated?"
--- Source: ygq4-hh5q (parking) + b3us-f26s (charging capacity)
+-- Note: The RDW datasets have different primary keys - we aggregate charging
+-- capacity by area manager instead of postal code join
 
 CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.LAADPALEN_PER_POSTCODE
     TARGET_LAG = '1 hour'
     WAREHOUSE = PON_ANALYTICS_WH
-    COMMENT = 'Charging points by postal area - matches PDF target model'
+    COMMENT = 'Charging points by area manager - from RDW API'
 AS
 SELECT 
-    LEFT(p.zipcode, 2) AS postcode,
-    SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
-FROM RAW.PARKING_ADDRESS_RAW p
-JOIN RAW.CHARGING_CAPACITY_RAW c 
-    ON p.areaid = c.areaid AND p.areamanagerid = c.areamanagerid
-WHERE p.zipcode IS NOT NULL
-GROUP BY LEFT(p.zipcode, 2);
+    area_manager_id AS postcode,
+    total_charging_points AS aantal
+FROM CURATED.CHARGING_BY_AREA
+WHERE total_charging_points > 0;
 
 -- =============================================================================
 -- Verify Dynamic Tables

@@ -53,7 +53,8 @@ def fetch_data(dataset_id, row_limit, row_offset):
     
     Dataset IDs:
     - m9d7-ebf2: Gekentekende voertuigen (registered vehicles)
-    - 8ys7-d773: Brandstof (fuel types)
+    - 8ys7-d773: Brandstof (fuel types)  
+    - 8wbe-pu7d: Voertuigen per postcode (vehicles by postal code - KEY dataset!)
     - ygq4-hh5q: Parkeerlocaties (parking locations)
     - b3us-f26s: Laadpalen capaciteit (charging capacity)
     """
@@ -156,11 +157,37 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f;
 
 -- =============================================================================
--- STEP 8: Verify Data Load
+-- STEP 8: Load Vehicles by Postcode (KEY dataset for regional analysis)
+-- =============================================================================
+-- This is the critical dataset for answering "which region has fastest EV growth"
+-- Contains: postcode, vehicle type, fuel type (B/D/E), plug-in capable (Y/N), count
+
+INSERT INTO VEHICLES_BY_POSTCODE_RAW 
+    (postcode, voertuigsoort, brandstof, extern_oplaadbaar, aantal, raw_json)
+WITH offsets AS (
+    SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
+    FROM TABLE(GENERATOR(ROWCOUNT => 50))
+),
+api_data AS (
+    SELECT FETCH_RDW_DATA('8wbe-pu7d', 1000, offset_val) AS data
+    FROM offsets
+)
+SELECT 
+    f.value:postcode::STRING,
+    f.value:voertuigsoort::STRING,
+    f.value:brandstof::STRING,
+    f.value:extern_oplaadbaar::STRING,
+    f.value:aantal::INT,
+    f.value
+FROM api_data, LATERAL FLATTEN(input => data) f;
+
+-- =============================================================================
+-- STEP 9: Verify Data Load
 -- =============================================================================
 
 SELECT 'VEHICLES_RAW' AS table_name, COUNT(*) AS row_count FROM VEHICLES_RAW
 UNION ALL SELECT 'VEHICLES_FUEL_RAW', COUNT(*) FROM VEHICLES_FUEL_RAW
+UNION ALL SELECT 'VEHICLES_BY_POSTCODE_RAW', COUNT(*) FROM VEHICLES_BY_POSTCODE_RAW
 UNION ALL SELECT 'PARKING_ADDRESS_RAW', COUNT(*) FROM PARKING_ADDRESS_RAW
 UNION ALL SELECT 'CHARGING_CAPACITY_RAW', COUNT(*) FROM CHARGING_CAPACITY_RAW;
 

@@ -58,6 +58,16 @@ CREATE TABLE IF NOT EXISTS CHARGING_CAPACITY_RAW (
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
+-- Vehicles by postal code (KEY dataset for regional EV analysis)
+CREATE TABLE IF NOT EXISTS VEHICLES_BY_POSTCODE_RAW (
+    postcode STRING COMMENT '4-digit postal code',
+    voertuigsoort STRING COMMENT 'Vehicle type (Personenauto, Bedrijfsauto, etc.)',
+    brandstof STRING COMMENT 'Fuel type: B=Benzine, D=Diesel, E=Electric',
+    extern_oplaadbaar STRING COMMENT 'Plug-in capable: Y/N',
+    aantal INT COMMENT 'Number of vehicles',
+    raw_json VARIANT COMMENT 'Complete JSON record from API'
+);
+
 -- Verify setup
 SHOW SCHEMAS IN DATABASE PON_EV_LAB;
 SHOW TABLES IN SCHEMA PON_EV_LAB.RAW;

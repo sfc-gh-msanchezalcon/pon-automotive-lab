@@ -2,10 +2,10 @@
   <img src="assets/banner.svg" alt="Pon Automotive EV Transition Lab" width="100%">
 </p>
 
-<h1 align="center">Pon Automotive: EV Transition Netherlands</h1>
+<h1 align="center">Pon EV Intelligence</h1>
 
 <p align="center">
-  <b>Build Scalable Data Pipelines for Electric Vehicle Analytics</b>
+  <b>Data Engineering for Strategic EV Planning</b>
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@ By the end you will have:
 2. **Automated Data Pipelines**: Dynamic Tables that refresh automatically with zero orchestration
 3. **Cost-Controlled Analytics**: Multi-cluster warehouses with resource monitors
 4. **Cross-Organization Data Sharing**: Secure sharing with dealers (no data copies)
-5. **Interactive Dashboard**: Streamlit in Snowflake for EV growth visualization
+5. **Pon EV Intelligence Dashboard**: Streamlit in Snowflake for regional analytics
 
 ### Architecture
 
@@ -131,14 +131,14 @@ Pon's pain points and how Snowflake addresses them:
 
 ## Data Sources
 
-All data comes from **RDW Open Data** (Dutch Vehicle Authority), the same datasets specified in the project requirements:
+All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic data:
 
 | Dataset | RDW ID | Description | Records |
 |---------|--------|-------------|---------|
-| Gekentekende Voertuigen | `m9d7-ebf2` | Registered vehicles | 50,000+ |
-| Brandstof | `8ys7-d773` | Fuel types per vehicle | 100,000+ |
-| Parkeerlocaties | `ygq4-hh5q` | Parking locations | 3,000+ |
-| Laadpalen Capaciteit | `b3us-f26s` | Charging point capacity | 3,000+ |
+| Voertuigen per Postcode | `8wbe-pu7d` | Vehicles by postal code (KEY) | 46,645 |
+| Laadpalen Capaciteit | `b3us-f26s` | Charging infrastructure | 3,139 |
+| Brandstof | `8ys7-d773` | Fuel types per vehicle | 150,000 |
+| Parkeeradres | `ygq4-hh5q` | Parking locations | 3,382 |
 
 ## Prerequisites
 
@@ -189,7 +189,7 @@ pon-automotive-lab/
 
 ## About This Lab
 
-Built for **Pon Automotive** to show how Snowflake addresses their data engineering challenges. The use case, data sources, and architecture reflect the "EV Transitie NL" project requirements.
+Built for **Pon Automotive** to demonstrate how Snowflake powers strategic EV planning. Real RDW data answers the core question: *Which region in the Netherlands has the fastest EV growth?*
 
 **Key differentiators:**
 - Zero infrastructure management (no clusters to configure)

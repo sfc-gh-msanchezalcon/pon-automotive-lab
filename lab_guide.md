@@ -117,21 +117,24 @@ CREATE SCHEMA IF NOT EXISTS ANALYTICS
 ```sql
 USE SCHEMA RAW;
 
-CREATE TABLE IF NOT EXISTS VEHICLES_RAW (
-    kenteken STRING COMMENT 'License plate number (primary key)',
-    datum_eerste_tenaamstelling_in_nederland STRING COMMENT 'First registration date in NL (YYYYMMDD)',
-    merk STRING COMMENT 'Vehicle brand (e.g., VOLKSWAGEN, TESLA)',
-    handelsbenaming STRING COMMENT 'Commercial model name',
-    voertuigsoort STRING COMMENT 'Vehicle type',
+-- KEY dataset: Vehicles aggregated by postal code and fuel type
+CREATE TABLE IF NOT EXISTS VEHICLES_BY_POSTCODE_RAW (
+    postcode STRING COMMENT '4-digit postal code',
+    voertuigsoort STRING COMMENT 'Vehicle type (Personenauto = passenger car)',
+    brandstof STRING COMMENT 'Fuel type: B=Benzine, D=Diesel, E=Electric',
+    extern_oplaadbaar STRING COMMENT 'Plug-in capable: J=Yes, N=No',
+    aantal INT COMMENT 'Number of vehicles',
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
+-- Fuel types per individual vehicle
 CREATE TABLE IF NOT EXISTS VEHICLES_FUEL_RAW (
-    kenteken STRING COMMENT 'License plate number (foreign key)',
+    kenteken STRING COMMENT 'License plate number',
     brandstof_omschrijving STRING COMMENT 'Fuel type description',
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
+-- Parking locations
 CREATE TABLE IF NOT EXISTS PARKING_ADDRESS_RAW (
     areaid STRING COMMENT 'Parking area identifier',
     areamanagerid STRING COMMENT 'Area manager identifier',
@@ -140,6 +143,7 @@ CREATE TABLE IF NOT EXISTS PARKING_ADDRESS_RAW (
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
+-- Charging infrastructure
 CREATE TABLE IF NOT EXISTS CHARGING_CAPACITY_RAW (
     areaid STRING COMMENT 'Parking area identifier',
     areamanagerid STRING COMMENT 'Area manager identifier',
@@ -147,6 +151,8 @@ CREATE TABLE IF NOT EXISTS CHARGING_CAPACITY_RAW (
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 ```
+
+> **What is VARIANT?** A Snowflake data type that stores semi-structured data (JSON, Avro, Parquet). We store the raw API response here for auditability.
 
 ### Checkpoint
 
@@ -238,32 +244,34 @@ SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 5, 0) AS sample_data;
 
 You should see a JSON array with vehicle data.
 
-### 2.5 Load Vehicle Data
+> **What is LATERAL FLATTEN?** A Snowflake function that expands a JSON array into rows. Each element becomes a separate row we can query with standard SQL.
 
-Now we load 50,000 vehicles in a single query using `LATERAL FLATTEN`:
+### 2.5 Load Vehicles by Postal Code (KEY Dataset)
+
+This is the most important dataset — it answers our business question about regional EV adoption:
 
 ```sql
-INSERT INTO PON_EV_LAB.RAW.VEHICLES_RAW 
-    (kenteken, datum_eerste_tenaamstelling_in_nederland, merk, handelsbenaming, voertuigsoort, raw_json)
+INSERT INTO PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW 
+    (postcode, voertuigsoort, brandstof, extern_oplaadbaar, aantal, raw_json)
 WITH offsets AS (
     SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
     FROM TABLE(GENERATOR(ROWCOUNT => 50))
 ),
 api_data AS (
-    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val) AS data
+    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('8wbe-pu7d', 1000, offset_val) AS data
     FROM offsets
 )
 SELECT 
-    f.value:kenteken::STRING,
-    f.value:datum_eerste_tenaamstelling_in_nederland::STRING,
-    f.value:merk::STRING,
-    f.value:handelsbenaming::STRING,
+    f.value:postcode::STRING,
     f.value:voertuigsoort::STRING,
+    f.value:brandstof::STRING,
+    f.value:extern_oplaadbaar::STRING,
+    f.value:aantal::INT,
     f.value
 FROM api_data, LATERAL FLATTEN(input => data) f;
 ```
 
-> **Performance Note:** This loads 50,000 records in seconds. The `LATERAL FLATTEN` pattern processes all API responses in parallel.
+> **What is GENERATOR?** Creates a virtual table with the specified number of rows. Combined with ROW_NUMBER, we generate offset values (0, 1000, 2000...) for API pagination.
 
 ### 2.6 Load Fuel Type Data
 
@@ -319,13 +327,13 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 Verify your data load:
 
 ```sql
-SELECT 'VEHICLES_RAW' AS table_name, COUNT(*) AS row_count FROM PON_EV_LAB.RAW.VEHICLES_RAW
+SELECT 'VEHICLES_BY_POSTCODE_RAW' AS table_name, COUNT(*) AS row_count FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
 UNION ALL SELECT 'VEHICLES_FUEL_RAW', COUNT(*) FROM PON_EV_LAB.RAW.VEHICLES_FUEL_RAW
 UNION ALL SELECT 'PARKING_ADDRESS_RAW', COUNT(*) FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW
 UNION ALL SELECT 'CHARGING_CAPACITY_RAW', COUNT(*) FROM PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW;
 ```
 
-Expected: 50K+ vehicles, 150K+ fuel records, 3K+ parking, 3K+ charging.
+Expected: ~47K vehicles by postcode, 150K fuel records, 3K parking, 3K charging.
 
 ### Scaling for Production (Facilitator Note)
 
@@ -353,125 +361,80 @@ Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are de
 
 > **💡 Talking Point:** With Dynamic Tables, there's no separate scheduler to configure or monitor. Snowflake handles the refresh logic, dependencies, and incremental updates automatically. You just write SQL.
 
-### 3.1 Create the Curated Layer
+> **What is TARGET_LAG?** The maximum time Snowflake allows data to be stale before automatically refreshing. `TARGET_LAG = '1 hour'` means data is never more than 1 hour old.
 
-Join vehicles with their fuel types and classify EVs:
+First, create the warehouse that Dynamic Tables will use for refresh:
 
 ```sql
-CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-    TARGET_LAG = '1 hour'
-    WAREHOUSE = COMPUTE_WH
-    COMMENT = 'Vehicles joined with fuel types, EV classification'
-AS
-SELECT 
-    v.kenteken,
-    TRY_TO_DATE(v.datum_eerste_tenaamstelling_in_nederland, 'YYYYMMDD') AS registration_date,
-    YEAR(TRY_TO_DATE(v.datum_eerste_tenaamstelling_in_nederland, 'YYYYMMDD')) AS registration_year,
-    v.merk AS brand,
-    v.handelsbenaming AS model,
-    v.voertuigsoort AS vehicle_type,
-    f.brandstof_omschrijving AS fuel_type,
-    
-    CASE 
-        WHEN f.brandstof_omschrijving ILIKE '%elektr%' THEN 'Electric'
-        WHEN f.brandstof_omschrijving ILIKE '%hybride%' THEN 'Hybrid'
-        WHEN f.brandstof_omschrijving ILIKE '%waterstof%' THEN 'Hydrogen'
-        WHEN f.brandstof_omschrijving ILIKE '%benzine%' THEN 'Petrol'
-        WHEN f.brandstof_omschrijving ILIKE '%diesel%' THEN 'Diesel'
-        WHEN f.brandstof_omschrijving ILIKE '%lpg%' THEN 'LPG'
-        ELSE 'Other'
-    END AS fuel_category,
-    
-    CASE 
-        WHEN f.brandstof_omschrijving ILIKE '%elektr%' 
-          OR f.brandstof_omschrijving ILIKE '%hybride%'
-          OR f.brandstof_omschrijving ILIKE '%waterstof%' 
-        THEN TRUE 
-        ELSE FALSE 
-    END AS is_ev_or_hybrid
-    
-FROM PON_EV_LAB.RAW.VEHICLES_RAW v
-LEFT JOIN PON_EV_LAB.RAW.VEHICLES_FUEL_RAW f 
-    ON v.kenteken = f.kenteken;
+CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
+    WAREHOUSE_SIZE = 'SMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    COMMENT = 'Warehouse for Pon EV Analytics';
 ```
 
-> **What Just Happened:** This Dynamic Table will automatically refresh within 1 hour of any changes to the source tables. No scheduling, no monitoring, no maintenance.
+### 3.1 Create the KEY Dynamic Table: EV by Region
 
-### 3.2 Create Charging Infrastructure View
+This directly answers our business question — EV adoption by postal area:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.CURATED.EV_BY_REGION
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'EV adoption metrics by postal area'
+AS
+SELECT 
+    LEFT(postcode, 2) AS postal_area,
+    SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) AS electric_vehicles,
+    SUM(CASE WHEN brandstof = 'B' THEN aantal ELSE 0 END) AS petrol_vehicles,
+    SUM(CASE WHEN brandstof = 'D' THEN aantal ELSE 0 END) AS diesel_vehicles,
+    SUM(aantal) AS total_vehicles,
+    ROUND(100.0 * SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) / NULLIF(SUM(aantal), 0), 2) AS ev_percentage
+FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+WHERE voertuigsoort = 'Personenauto'
+GROUP BY LEFT(postcode, 2);
+```
+
+### 3.2 Create Charging Infrastructure Table
 
 ```sql
 CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.CURATED.CHARGING_BY_AREA
     TARGET_LAG = '1 hour'
-    WAREHOUSE = COMPUTE_WH
-    COMMENT = 'Charging infrastructure aggregated by postal code area'
+    WAREHOUSE = PON_ANALYTICS_WH
 AS
 SELECT 
-    p.zipcode,
-    LEFT(p.zipcode, 2) AS postal_area,
-    COUNT(DISTINCT p.areaid) AS num_parking_locations,
-    SUM(TRY_TO_NUMBER(c.chargingpointcapacity)) AS total_charging_points,
-    AVG(TRY_TO_NUMBER(c.chargingpointcapacity)) AS avg_charging_per_location
-FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW p
-LEFT JOIN PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW c 
-    ON p.areaid = c.areaid 
-    AND p.areamanagerid = c.areamanagerid
-WHERE p.zipcode IS NOT NULL
-GROUP BY p.zipcode, LEFT(p.zipcode, 2);
+    areamanagerid AS area_manager_id,
+    COUNT(*) AS num_parking_areas,
+    SUM(TRY_CAST(chargingpointcapacity AS INT)) AS total_charging_points
+FROM PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW
+GROUP BY areamanagerid;
 ```
 
-### 3.3 Create Analytics Layer
+### 3.3 Create the Correlation Analysis
 
-Now the business metrics. This answers the key question:
+This joins EV data with infrastructure to answer: "Does charging availability correlate with EV adoption?"
 
 ```sql
-CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
     TARGET_LAG = '1 hour'
-    WAREHOUSE = COMPUTE_WH
-    COMMENT = 'EV registration trends by year'
+    WAREHOUSE = PON_ANALYTICS_WH
 AS
 SELECT 
-    registration_year,
-    fuel_category,
-    COUNT(*) AS vehicle_count,
-    SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS ev_hybrid_count,
-    ROUND(SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) * 100.0 / 
-          NULLIF(COUNT(*), 0), 2) AS ev_percentage
-FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-WHERE registration_year IS NOT NULL 
-  AND registration_year >= 2015
-GROUP BY registration_year, fuel_category
-ORDER BY registration_year, fuel_category;
-
-CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
-    TARGET_LAG = '1 hour'
-    WAREHOUSE = COMPUTE_WH
-    COMMENT = 'Year-over-year EV growth metrics'
-AS
-WITH yearly_totals AS (
-    SELECT 
-        registration_year,
-        COUNT(*) AS total_vehicles,
-        SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS ev_count
-    FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-    WHERE registration_year IS NOT NULL 
-      AND registration_year >= 2015
-    GROUP BY registration_year
-)
-SELECT 
-    registration_year,
-    total_vehicles,
-    ev_count,
-    ROUND(ev_count * 100.0 / NULLIF(total_vehicles, 0), 2) AS ev_share_percent,
-    LAG(ev_count) OVER (ORDER BY registration_year) AS prev_year_ev_count,
+    e.postal_area,
+    e.electric_vehicles,
+    e.ev_percentage,
+    COALESCE(p.parking_locations, 0) AS parking_locations,
     CASE 
-        WHEN LAG(ev_count) OVER (ORDER BY registration_year) > 0 
-        THEN ROUND(
-            (ev_count - LAG(ev_count) OVER (ORDER BY registration_year)) * 100.0 / 
-            LAG(ev_count) OVER (ORDER BY registration_year), 1)
-        ELSE NULL 
-    END AS yoy_growth_percent
-FROM yearly_totals
-ORDER BY registration_year;
+        WHEN p.parking_locations > 0 
+        THEN ROUND(e.electric_vehicles / p.parking_locations, 0) 
+    END AS evs_per_parking_location
+FROM PON_EV_LAB.CURATED.EV_BY_REGION e
+LEFT JOIN (
+    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(DISTINCT areaid) AS parking_locations
+    FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW 
+    GROUP BY LEFT(zipcode, 2)
+) p ON e.postal_area = p.postal_area
+WHERE e.total_vehicles > 5000;
 ```
 
 ### 3.4 View Your Pipeline
@@ -480,25 +443,26 @@ Check the Dynamic Table status:
 
 ```sql
 SHOW DYNAMIC TABLES IN DATABASE PON_EV_LAB;
+```
 
-SELECT 
-    name,
-    target_lag,
-    refresh_mode,
-    scheduling_state
-FROM TABLE(INFORMATION_SCHEMA.DYNAMIC_TABLES())
-WHERE database_name = 'PON_EV_LAB';
+### 3.5 Query the Results
+
+```sql
+-- Top regions by EV adoption
+SELECT * FROM PON_EV_LAB.CURATED.EV_BY_REGION 
+ORDER BY ev_percentage DESC LIMIT 10;
+
+-- Infrastructure correlation
+SELECT * FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
+ORDER BY evs_per_parking_location DESC LIMIT 10;
 ```
 
 ### Checkpoint
 
-Query your analytics:
-
-```sql
-SELECT * FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH ORDER BY registration_year;
-```
-
-You should see EV growth trends over the years.
+You should see:
+- 3+ Dynamic Tables in CURATED and ANALYTICS schemas
+- EV_BY_REGION showing ~90 postal areas with EV percentages
+- EV_INFRASTRUCTURE_CORRELATION showing EVs per parking location
 
 ---
 
@@ -508,23 +472,20 @@ You should see EV growth trends over the years.
 
 **Duration: 15 minutes**
 
-Before we share data externally, let's set up the operational guardrails. This module addresses two critical pain points: **slow queries** and **unpredictable costs**.
+Now let's enhance our warehouse with scaling and cost controls.
 
-### 4.1 Create a Multi-Cluster Warehouse
+### 4.1 Enable Multi-Cluster Scaling
+
+Upgrade the warehouse to handle concurrent users:
 
 ```sql
-CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
-    WAREHOUSE_SIZE = 'SMALL'
-    AUTO_SUSPEND = 60
-    AUTO_RESUME = TRUE
+ALTER WAREHOUSE PON_ANALYTICS_WH SET
     MIN_CLUSTER_COUNT = 1
     MAX_CLUSTER_COUNT = 3
-    SCALING_POLICY = 'STANDARD'
-    INITIALLY_SUSPENDED = TRUE
-    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
+    SCALING_POLICY = 'STANDARD';
 ```
 
-> **Snowflake Advantage:** Warehouses resume in under 1 second. No cold-start delays, no capacity planning. You pay only while queries run.
+> **What is Multi-Cluster?** When multiple users run queries simultaneously, Snowflake automatically spins up additional clusters. Each user gets dedicated compute — no one waits.
 
 ### 4.2 Create a Resource Monitor
 

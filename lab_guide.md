@@ -569,18 +569,46 @@ Your warehouse should show:
 
 ## Module 5: Secure Data Sharing
 
-**Duration: 15 minutes**
+**Duration: 20 minutes**
 
 This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
 
-### 5.1 Create a Data Share
+In this module, you'll pair up with another participant to experience both sides of data sharing: **provider** (sharing data out) and **consumer** (receiving shared data).
+
+### 5.1 Find Your Account Locator
+
+First, get your account identifier. You'll share this with your partner:
+
+```sql
+SELECT CURRENT_ORGANIZATION_NAME() || '.' || CURRENT_ACCOUNT_NAME() AS my_account_locator;
+```
+
+Write this down or copy it. It looks like: `ORGNAME.ACCOUNTNAME`
+
+You can also find it in the Snowsight URL: `https://app.snowflake.com/ORGNAME/ACCOUNTNAME/`
+
+### 5.2 Pair Up
+
+Find a partner sitting near you:
+- **You** = Partner A
+- **Your neighbor** = Partner B
+
+Exchange account locators with each other. You'll need your partner's locator in step 5.5.
+
+| Your Account Locator | Partner's Account Locator |
+|---------------------|---------------------------|
+| __________________ | __________________ |
+
+### 5.3 Create Your Data Share (Both Partners)
+
+Both partners run this on their own account:
 
 ```sql
 CREATE OR REPLACE SHARE PON_DEALER_SHARE
     COMMENT = 'EV analytics data for Pon dealer network - live data, no copies';
 ```
 
-### 5.2 Grant Access to Objects
+### 5.4 Grant Access to Objects (Both Partners)
 
 ```sql
 GRANT USAGE ON DATABASE PON_EV_LAB TO SHARE PON_DEALER_SHARE;
@@ -590,53 +618,81 @@ GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_DEALER_
 GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHARE;
 ```
 
-### 5.3 Verify the Share Contents
+Verify your share contents:
 
 ```sql
-SHOW SHARES LIKE 'PON_DEALER_SHARE';
-
 DESCRIBE SHARE PON_DEALER_SHARE;
 ```
 
-You should see:
-- `kind`: OUTBOUND
-- `database_name`: PON_EV_LAB
-- Objects: EV_GROWTH_TRENDS, EV_YOY_GROWTH
+You should see: `kind`: OUTBOUND, with EV_GROWTH_TRENDS and EV_YOY_GROWTH listed.
 
-### 5.4 View in Snowsight UI
+### 5.5 Add Your Partner as a Consumer (Both Partners)
 
-To see your share visually:
+Now add your partner's account to your share:
 
-1. Navigate to **Data Products** > **Private Sharing**
-2. Click the **Shared by My Account** tab
-3. You should see `PON_DEALER_SHARE` listed
-4. Click on it to see the shared objects and manage consumers
-
-### 5.5 Simulate Consumer Access (Optional)
-
-If you have access to a second Snowflake account, you can test the full flow:
-
-**On the Provider (your account):**
 ```sql
--- Add the consumer account (replace with actual account locator)
-ALTER SHARE PON_DEALER_SHARE ADD ACCOUNTS = '<consumer_account_locator>';
+-- Replace with your PARTNER's account locator (not yours!)
+ALTER SHARE PON_DEALER_SHARE ADD ACCOUNTS = '<partner_account_locator>';
+
+-- Example: ALTER SHARE PON_DEALER_SHARE ADD ACCOUNTS = 'MYORG.MYPARTNER';
 
 -- Verify the consumer was added
 SHOW GRANTS OF SHARE PON_DEALER_SHARE;
 ```
 
-**On the Consumer (second account):**
+### 5.6 Consume Your Partner's Share (Both Partners)
+
+Now access the data your partner shared with you:
+
 ```sql
--- See available shares
+-- See shares available to you (your partner's share should appear)
 SHOW SHARES;
 
--- Create a database from the share
-CREATE DATABASE PON_EV_DATA FROM SHARE <provider_account>.PON_DEALER_SHARE;
+-- Create a database from your PARTNER's share
+-- Replace with your PARTNER's account locator
+CREATE DATABASE PARTNER_EV_DATA FROM SHARE <partner_account_locator>.PON_DEALER_SHARE;
 
--- Query the shared data (live, no copy!)
-SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS LIMIT 10;
-SELECT * FROM PON_EV_DATA.ANALYTICS.EV_YOY_GROWTH;
+-- Example: CREATE DATABASE PARTNER_EV_DATA FROM SHARE MYORG.MYPARTNER.PON_DEALER_SHARE;
 ```
+
+### 5.7 Query Your Partner's Live Data
+
+Now query the shared data. This is querying your partner's data directly, with zero copies:
+
+```sql
+-- Query your partner's EV growth trends
+SELECT * FROM PARTNER_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS 
+ORDER BY registration_year DESC
+LIMIT 10;
+
+-- Compare total vehicles
+SELECT 
+    'My Data' AS source, 
+    SUM(vehicle_count) AS total 
+FROM PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS
+
+UNION ALL
+
+SELECT 
+    'Partner Data' AS source, 
+    SUM(vehicle_count) AS total 
+FROM PARTNER_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS;
+```
+
+### 5.8 See It in the UI
+
+To see your share visually:
+
+1. Navigate to **Data Products** > **Private Sharing**
+2. **Shared by My Account** tab: See `PON_DEALER_SHARE` (your outbound share)
+3. **Shared with My Account** tab: See your partner's share (inbound)
+
+### Checkpoint
+
+Verify the sharing worked:
+- You can query `PARTNER_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS`
+- Your partner can query data from YOUR share
+- No data was copied. Updates you make will be instantly visible to your partner.
 
 ### Key Benefits for Pon
 

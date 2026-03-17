@@ -26,10 +26,21 @@ In this lab, you'll build a complete data engineering solution to analyze the **
 
 This lab focuses on the **data engineering fundamentals** that matter most:
 
-- ✅ **Real API data**: Not synthetic, not CSV uploads, actual live government APIs
-- ✅ **Zero orchestration**: Dynamic Tables replace Airflow/Data Factory complexity
-- ✅ **Cost control built-in**: Resource monitors prevent runaway spending
-- ✅ **Production-ready sharing**: Share live data with partners, no copies
+- Real API data: Not synthetic, not CSV uploads, actual live government APIs
+- Zero orchestration: Dynamic Tables replace Airflow/Data Factory complexity
+- Cost control built-in: Resource monitors prevent runaway spending
+- Production-ready sharing: Share live data with partners, no copies
+
+### The Journey
+
+| Step | Module | What You'll Do |
+|------|--------|----------------|
+| 1 | **Ingest** | Pull live data from government APIs |
+| 2 | **Transform** | Build automated pipelines with Dynamic Tables |
+| 3 | **Enrich** | Add third-party data from the Marketplace |
+| 4 | **Share** | Publish live data to partners |
+| 5 | **Control** | Set cost guardrails and scaling policies |
+| 6 | **Visualize** | Build an interactive Streamlit dashboard |
 
 Let's get started.
 
@@ -137,7 +148,7 @@ CREATE TABLE IF NOT EXISTS CHARGING_CAPACITY_RAW (
 );
 ```
 
-### ✅ Checkpoint
+### Checkpoint
 
 Run this to verify your setup:
 
@@ -181,7 +192,7 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION rdw_api_access
     COMMENT = 'External access for RDW Open Data API calls';
 ```
 
-> 💡 **Why This Matters:** With Databricks, you'd need to configure network egress at the cluster level or use a separate service. With Fabric, you'd need Data Factory pipelines. Snowflake makes it declarative and auditable.
+> **Why This Matters:** With Databricks, you'd need to configure network egress at the cluster level or use a separate service. With Fabric, you'd need Data Factory pipelines. Snowflake makes it declarative and auditable.
 
 ### 2.3 Create the API Fetching Function
 
@@ -252,7 +263,7 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f;
 ```
 
-> 💡 **Performance Note:** This loads 50,000 records in seconds. The `LATERAL FLATTEN` pattern processes all API responses in parallel.
+> **Performance Note:** This loads 50,000 records in seconds. The `LATERAL FLATTEN` pattern processes all API responses in parallel.
 
 ### 2.6 Load Fuel Type Data
 
@@ -303,7 +314,7 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f;
 ```
 
-### ✅ Checkpoint
+### Checkpoint
 
 Verify your data load:
 
@@ -368,7 +379,7 @@ LEFT JOIN PON_EV_LAB.RAW.VEHICLES_FUEL_RAW f
     ON v.kenteken = f.kenteken;
 ```
 
-> 💡 **What Just Happened:** This Dynamic Table will automatically refresh within 1 hour of any changes to the source tables. No scheduling, no monitoring, no maintenance.
+> **What Just Happened:** This Dynamic Table will automatically refresh within 1 hour of any changes to the source tables. No scheduling, no monitoring, no maintenance.
 
 ### 3.2 Create Charging Infrastructure View
 
@@ -463,7 +474,7 @@ FROM TABLE(INFORMATION_SCHEMA.DYNAMIC_TABLES())
 WHERE database_name = 'PON_EV_LAB';
 ```
 
-### ✅ Checkpoint
+### Checkpoint
 
 Query your analytics:
 
@@ -477,80 +488,154 @@ You should see EV growth trends over the years.
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Module 4: Scaling & Cost Control
+## Module 4: Marketplace Data Enrichment
 
 **Duration: 15 minutes**
 
-This module addresses two critical pain points: **slow queries** and **unpredictable costs**.
+Now that you've built your core pipeline with RDW data, let's enrich it with third-party data from the Snowflake Marketplace. This demonstrates how Snowflake enables a complete **data ecosystem**: you can both consume external data AND share your own.
 
-### 4.1 Create a Multi-Cluster Warehouse
+### Why Marketplace Matters
 
-```sql
-CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
-    WAREHOUSE_SIZE = 'SMALL'
-    AUTO_SUSPEND = 60
-    AUTO_RESUME = TRUE
-    MIN_CLUSTER_COUNT = 1
-    MAX_CLUSTER_COUNT = 3
-    SCALING_POLICY = 'STANDARD'
-    INITIALLY_SUSPENDED = TRUE
-    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
-```
+Unlike Databricks or Fabric, Snowflake offers a **native data marketplace** with 2,500+ free and paid datasets. No ETL, no data movement, instant access.
 
-> 💡 **vs. Databricks:** You'd manually configure autoscaling ranges and wait 2-5 minutes for cluster spin-up.
-> 
-> 💡 **vs. Fabric:** Capacity units are shared across the workspace. Heavy users affect everyone.
+### 4.1 Get the Datasets
 
-### 4.2 Create a Resource Monitor
+We'll use two free datasets that everyone can access:
 
-Prevent runaway costs with automatic guardrails:
+**Dataset 1: Weather Data**
+1. Navigate to **Data Products** > **Marketplace**
+2. Search for: `Global Weather & Climate Data for BI`
+3. Select the listing from **Pelmorex Weather Source**
+4. Click **Get** and accept the terms
+5. Database name: `WEATHER_SOURCE` (or use the suggested name)
 
-```sql
-CREATE OR REPLACE RESOURCE MONITOR PON_LAB_MONITOR
-    WITH CREDIT_QUOTA = 100
-    FREQUENCY = MONTHLY
-    START_TIMESTAMP = IMMEDIATELY
-    TRIGGERS
-        ON 50 PERCENT DO NOTIFY
-        ON 75 PERCENT DO NOTIFY
-        ON 90 PERCENT DO NOTIFY
-        ON 100 PERCENT DO SUSPEND
-        ON 110 PERCENT DO SUSPEND_IMMEDIATE;
+**Dataset 2: Economic & Demographic Data**
+1. Search for: `Snowflake Public Data (Free)`
+2. Select the listing from **Snowflake Public Data Products**
+3. Click **Get** and accept the terms
+4. Database name: `SNOWFLAKE_PUBLIC_DATA` (or use the suggested name)
 
-ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
-```
+Both datasets appear instantly, no ETL required.
 
-### 4.3 Demo: Performance Test
+### 4.2 Example 1: Weather Impact on EV Range
 
-Run this to see instant query execution:
+Cold weather reduces EV battery range by 20-40%. Let's correlate EV adoption with temperature:
 
 ```sql
-USE WAREHOUSE PON_ANALYTICS_WH;
+-- Check what cities are available in the weather sample
+SELECT DISTINCT CITY_NAME, COUNTRY_CODE 
+FROM WEATHER_SOURCE.STANDARD_TILE.POINT_HISTORY_DAY
+ORDER BY COUNTRY_CODE, CITY_NAME;
 
-SELECT 'Query 1: Count all vehicles' AS test, COUNT(*) AS result 
-FROM PON_EV_LAB.RAW.VEHICLES_RAW;
-
-SELECT 'Query 2: Join performance' AS test, COUNT(*) AS result 
-FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL;
-
-SELECT 'Query 3: Aggregation' AS test, fuel_category, COUNT(*) AS result 
-FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-GROUP BY fuel_category;
+-- Get average temperature trends (sample includes major global cities)
+SELECT 
+    YEAR(DATE_VALID_STD) AS year,
+    CITY_NAME,
+    ROUND(AVG(AVG_TEMPERATURE_AIR_2M_F), 1) AS avg_temp_f,
+    ROUND((AVG(AVG_TEMPERATURE_AIR_2M_F) - 32) * 5/9, 1) AS avg_temp_c,
+    COUNT(*) AS days_recorded
+FROM WEATHER_SOURCE.STANDARD_TILE.POINT_HISTORY_DAY
+WHERE COUNTRY_CODE = 'US'
+GROUP BY 1, 2
+ORDER BY year DESC, CITY_NAME;
 ```
 
-### 4.4 View Warehouse Status
+> **Insight for Pon:** Weather data helps predict seasonal demand. EVs sell better in spring/summer when range anxiety is lower.
+
+### 4.3 Example 2: Economic Indicators for Market Analysis
+
+The Snowflake Public Data includes OECD economic indicators, World Bank data, and more:
 
 ```sql
-SHOW WAREHOUSES LIKE 'PON_ANALYTICS_WH';
-SHOW RESOURCE MONITORS LIKE 'PON_LAB_MONITOR';
+-- Explore available economic timeseries
+SELECT DISTINCT 
+    ts.VARIABLE_NAME,
+    ts.UNIT,
+    g.GEO_NAME
+FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.DATACOMMONS_TIMESERIES ts
+JOIN SNOWFLAKE_PUBLIC_DATA.CYBERSYN.GEOGRAPHY_INDEX g
+    ON ts.GEO_ID = g.GEO_ID
+WHERE g.GEO_NAME ILIKE '%netherlands%'
+    AND ts.VARIABLE_NAME ILIKE '%income%' OR ts.VARIABLE_NAME ILIKE '%population%'
+LIMIT 20;
+
+-- GDP and economic growth (example query structure)
+SELECT 
+    DATE,
+    VARIABLE_NAME,
+    VALUE,
+    UNIT
+FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.DATACOMMONS_TIMESERIES
+WHERE GEO_ID = 'country/NLD'
+    AND VARIABLE_NAME ILIKE '%gdp%'
+ORDER BY DATE DESC
+LIMIT 10;
 ```
 
-### ✅ Checkpoint
+### 4.4 Example 3: Energy Prices and Charging Costs
 
-Your warehouse should show:
-- State: STARTED or SUSPENDED
-- Size: SMALL
-- Min/Max Clusters: 1/3
+Energy costs directly impact EV ownership economics:
+
+```sql
+-- Explore energy data from EIA (US Energy Information Administration)
+SELECT DISTINCT 
+    VARIABLE_NAME,
+    UNIT,
+    FREQUENCY
+FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.EIA_TIMESERIES
+WHERE VARIABLE_NAME ILIKE '%electricity%price%'
+LIMIT 20;
+
+-- European energy context from ECB/Eurostat
+SELECT 
+    DATE,
+    VARIABLE_NAME,
+    VALUE,
+    UNIT
+FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.ECB_TIMESERIES
+WHERE VARIABLE_NAME ILIKE '%energy%'
+ORDER BY DATE DESC
+LIMIT 20;
+```
+
+> **Insight for Pon:** When electricity prices drop relative to petrol, EV adoption accelerates.
+
+### 4.5 Example 4: Climate Data for Sustainability Reporting
+
+Track greenhouse gas emissions for ESG reporting:
+
+```sql
+-- Climate Watch emissions data
+SELECT 
+    DATE,
+    GEO_ID,
+    VARIABLE_NAME,
+    VALUE,
+    UNIT
+FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.CLIMATE_WATCH_TIMESERIES
+WHERE GEO_ID = 'country/NLD'
+    AND VARIABLE_NAME ILIKE '%transport%' OR VARIABLE_NAME ILIKE '%emission%'
+ORDER BY DATE DESC
+LIMIT 20;
+```
+
+### Key Differentiator
+
+| Platform | Third-party Data | Integration Effort |
+|----------|------------------|-------------------|
+| **Snowflake** | 2,500+ datasets, instant access | Zero ETL |
+| Databricks | Delta Sharing (limited catalog) | Partner setup required |
+| Fabric | OneLake shortcuts (Microsoft ecosystem only) | Configuration needed |
+
+### Marketplace Value for Pon
+
+| Use Case | Dataset | Business Impact |
+|----------|---------|-----------------|
+| **Seasonal demand** | Weather data | Plan inventory for spring EV sales push |
+| **Regional targeting** | Demographics | Focus marketing on high-income urban areas |
+| **Pricing strategy** | Energy prices | Time promotions with low electricity rates |
+| **ESG reporting** | Climate data | Quantify CO2 reduction from EV fleet |
+| **Economic outlook** | GDP/employment | Forecast demand based on economic health |
 
 ---
 
@@ -560,7 +645,9 @@ Your warehouse should show:
 
 **Duration: 15 minutes**
 
-This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
+In the previous module, you consumed external data from the Marketplace. Now let's do the reverse: **share YOUR data with external partners**. This is Snowflake's killer feature: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
+
+Together, Marketplace (data in) and Data Sharing (data out) represent Snowflake's complete data collaboration story.
 
 ### 5.1 Create a Data Share
 
@@ -606,23 +693,102 @@ CREATE DATABASE PON_EV_DATA FROM SHARE <your_account>.PON_DEALER_SHARE;
 SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS;
 ```
 
-> 💡 **vs. Databricks:** Delta Sharing requires a separate setup, different protocol, and often involves data copies for cross-cloud scenarios.
+> **vs. Databricks:** Delta Sharing requires a separate setup, different protocol, and often involves data copies for cross-cloud scenarios.
 > 
-> 💡 **vs. Fabric:** No native cross-organization sharing capability.
+> **vs. Fabric:** No native cross-organization sharing capability.
 
 ---
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Module 6: Streamlit Dashboard
+## Module 6: Scaling & Cost Control
+
+**Duration: 15 minutes**
+
+This module addresses two critical pain points: **slow queries** and **unpredictable costs**.
+
+### 6.1 Create a Multi-Cluster Warehouse
+
+```sql
+CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
+    WAREHOUSE_SIZE = 'SMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    MIN_CLUSTER_COUNT = 1
+    MAX_CLUSTER_COUNT = 3
+    SCALING_POLICY = 'STANDARD'
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
+```
+
+> **vs. Databricks:** You'd manually configure autoscaling ranges and wait 2-5 minutes for cluster spin-up.
+> 
+> **vs. Fabric:** Capacity units are shared across the workspace. Heavy users affect everyone.
+
+### 6.2 Create a Resource Monitor
+
+Prevent runaway costs with automatic guardrails:
+
+```sql
+CREATE OR REPLACE RESOURCE MONITOR PON_LAB_MONITOR
+    WITH CREDIT_QUOTA = 100
+    FREQUENCY = MONTHLY
+    START_TIMESTAMP = IMMEDIATELY
+    TRIGGERS
+        ON 50 PERCENT DO NOTIFY
+        ON 75 PERCENT DO NOTIFY
+        ON 90 PERCENT DO NOTIFY
+        ON 100 PERCENT DO SUSPEND
+        ON 110 PERCENT DO SUSPEND_IMMEDIATE;
+
+ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
+```
+
+### 6.3 Demo: Performance Test
+
+Run this to see instant query execution:
+
+```sql
+USE WAREHOUSE PON_ANALYTICS_WH;
+
+SELECT 'Query 1: Count all vehicles' AS test, COUNT(*) AS result 
+FROM PON_EV_LAB.RAW.VEHICLES_RAW;
+
+SELECT 'Query 2: Join performance' AS test, COUNT(*) AS result 
+FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL;
+
+SELECT 'Query 3: Aggregation' AS test, fuel_category, COUNT(*) AS result 
+FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+GROUP BY fuel_category;
+```
+
+### 6.4 View Warehouse Status
+
+```sql
+SHOW WAREHOUSES LIKE 'PON_ANALYTICS_WH';
+SHOW RESOURCE MONITORS LIKE 'PON_LAB_MONITOR';
+```
+
+### Checkpoint
+
+Your warehouse should show:
+- State: STARTED or SUSPENDED
+- Size: SMALL
+- Min/Max Clusters: 1/3
+
+---
+
+<p align="center"><img src="assets/divider.svg" width="80%"></p>
+
+## Module 7: Streamlit Dashboard
 
 **Duration: 15 minutes**
 
 Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment.
 
-### 6.1 Create the Streamlit App
+### 7.1 Create the Streamlit App
 
-1. In Snowsight, go to **Projects** → **Streamlit**
+1. In Snowsight, go to **Projects** > **Streamlit**
 2. Click **+ Streamlit App**
 3. Configure:
    - **Name:** `EV_TRANSITION_DASHBOARD`
@@ -630,7 +796,7 @@ Build an interactive dashboard directly in Snowflake. No external hosting, no se
    - **Database/Schema:** `PON_EV_LAB.ANALYTICS`
 4. Click **Create**
 
-### 6.2 Add the Dashboard Code
+### 7.2 Add the Dashboard Code
 
 Replace the default code with:
 
@@ -735,11 +901,11 @@ st.divider()
 st.caption("Database: PON_EV_LAB | Warehouse: PON_ANALYTICS_WH | Share: PON_DEALER_SHARE")
 ```
 
-### 6.3 Run the App
+### 7.3 Run the App
 
 Click **Run** in the top-right corner. Your dashboard is now live.
 
-### ✅ Checkpoint
+### Checkpoint
 
 You should see an interactive dashboard with:
 - EV growth chart
@@ -751,7 +917,7 @@ You should see an interactive dashboard with:
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Module 7: Wrap-up & Discussion
+## Module 8: Wrap-up & Discussion
 
 **Duration: 10 minutes**
 
@@ -761,9 +927,10 @@ You should see an interactive dashboard with:
 |-----------|-------------------|---------|
 | API Ingestion | External Access + UDFs | No external tools needed |
 | Data Pipeline | Dynamic Tables | Zero orchestration |
+| Data Enrichment | Marketplace | Instant third-party data |
+| Data Sharing | Secure Shares | Live data, no copies |
 | Scaling | Multi-cluster Warehouse | Instant, automatic |
 | Cost Control | Resource Monitors | Predictable spend |
-| Data Sharing | Secure Shares | Live data, no copies |
 | Dashboard | Streamlit in Snowflake | No separate hosting |
 
 ### Key Differentiators
@@ -806,100 +973,6 @@ PON_DEALER_SHARE (Data Share)
 2. **Add regional analysis**: Join with postal code regions
 3. **Schedule refreshes**: Adjust Dynamic Table lag for production
 4. **Add dealers to share**: Provide real dealer Snowflake accounts
-
----
-
-<p align="center"><img src="assets/divider.svg" width="80%"></p>
-
-## Bonus Module: Marketplace Data Enrichment
-
-**Duration: 10 minutes** | **Optional**
-
-> This module demonstrates how Snowflake Marketplace can enrich your analysis with third-party data. This is outside the core use case scope but showcases a key platform differentiator.
-
-### Why Marketplace Matters
-
-Unlike Databricks or Fabric, Snowflake offers a **native data marketplace** with 2,500+ free and paid datasets. No ETL, no data movement, instant access.
-
-**Relevant datasets for EV analysis:**
-- Weather data (EV range varies by temperature)
-- Demographics (income, urbanization correlate with EV adoption)
-- Energy prices (charging costs impact ownership decisions)
-- CBS statistics (official Netherlands statistics)
-
-### Step 1: Browse Marketplace
-
-1. Navigate to **Data Products** → **Marketplace**
-2. Search for `netherlands` or `weather`
-3. Filter by **Free** datasets
-4. Look for datasets like:
-   - Knoema demographic data
-   - Open weather historical data
-   - CBS Netherlands statistics
-
-### Step 2: Get a Dataset
-
-For this example, we'll use a free weather dataset (actual availability may vary):
-
-1. Click **Get** on a weather dataset
-2. Accept the terms
-3. The data appears instantly in your account under **Data** → **Shared with Me**
-
-### Step 3: Query Combined Data
-
-Once you have access to a weather dataset (example structure):
-
-```sql
--- Example: Correlate EV growth with average temperature by province
--- Adjust table/column names based on actual Marketplace dataset
-
-SELECT 
-    e.PROVINCE,
-    e.YEAR,
-    e.YOY_GROWTH_PCT,
-    w.AVG_TEMPERATURE_C,
-    w.HEATING_DEGREE_DAYS
-FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH e
-LEFT JOIN WEATHER_DB.PUBLIC.NL_PROVINCE_WEATHER w
-    ON e.PROVINCE = w.PROVINCE
-    AND e.YEAR = w.YEAR
-ORDER BY e.YOY_GROWTH_PCT DESC;
-```
-
-### Step 4: Add to Streamlit
-
-You can extend the dashboard with a correlation analysis tab:
-
-```python
-# Add to streamlit_app.py - Marketplace Enrichment tab
-weather_tab = st.tabs(["Weather Correlation"])
-
-with weather_tab:
-    st.subheader("EV Adoption vs Temperature")
-    
-    # Scatter plot: temperature vs EV adoption rate
-    correlation_data = session.sql("""
-        SELECT PROVINCE, AVG_TEMP, EV_GROWTH_PCT 
-        FROM enriched_view
-    """).to_pandas()
-    
-    st.scatter_chart(correlation_data, x="AVG_TEMP", y="EV_GROWTH_PCT")
-```
-
-### Key Differentiator
-
-| Platform | Third-party Data | Integration Effort |
-|----------|------------------|-------------------|
-| **Snowflake** | 2,500+ datasets, instant access | Zero ETL |
-| Databricks | Delta Sharing (limited catalog) | Partner setup required |
-| Fabric | OneLake shortcuts (Microsoft ecosystem only) | Configuration needed |
-
-### Marketplace Value for Pon
-
-- **Dealer enrichment**: Add demographic data per region
-- **Demand forecasting**: Weather patterns affect EV range/charging
-- **Competitive analysis**: Combine with market share data
-- **Sustainability reporting**: Carbon intensity by energy source
 
 ---
 

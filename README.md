@@ -24,6 +24,18 @@
 
 This insight drives decisions about dealership inventory, charging station partnerships, regional marketing, and fleet transition planning.
 
+### The Answer (Spoiler)
+
+By the end of this lab, your dashboard will show:
+
+| Insight | Finding |
+|---------|---------|
+| **Highest EV adoption** | Amsterdam area leads with ~25% EV share |
+| **Biggest infrastructure gap** | Regions with 500+ EVs per charging location |
+| **Correlation** | High EV adoption ≠ sufficient charging — expansion opportunities identified |
+
+This is real RDW data, analyzed in real-time via Dynamic Tables, visualized in Streamlit.
+
 ## What You Will Build
 
 A complete data engineering solution using **real Dutch government data**, all within Snowflake. No external tools, no complex orchestration, no cluster management.
@@ -114,6 +126,19 @@ Pon's pain points and how Snowflake addresses them:
 | **Cost Control** | Resource Monitors (hard limits) | Budgets + DBU tracking | Capacity allocation |
 | **Cross-Org Data Sharing** | Native zero-copy (any cloud) | Delta Sharing (Unity Catalog required) | External sharing (limited) |
 | **Embedded BI** | Streamlit (native) | Dashboards (native) | Power BI (native) |
+
+## How This Lab Maps to Pon's Requirements
+
+| Pon's Criteria | Lab Module | How We Address It |
+|----------------|------------|-------------------|
+| **Business Question**: "Which region has fastest EV growth and does it correlate with charging?" | Module 7 | Dashboard Tab 2 shows EV adoption vs charging infrastructure by region with explicit answer |
+| **RDW Open Data APIs** with pagination (1000 row limit) | Module 2 | Python UDF with External Access handles `$limit` and `$offset` pattern |
+| **Voertuigen met brandstof per postcode** dataset | Module 2 | Ingested via `8wbe-pu7d` API into `VEHICLES_BY_POSTCODE_RAW` |
+| **RAW → CURATED → ANALYTICS** pipeline | Module 3 | Three-schema medallion architecture with Dynamic Tables |
+| **No manual orchestration** | Module 3 | Dynamic Tables with `TARGET_LAG` replace Airflow/schedulers |
+| **Cost control and scaling** | Module 4 | Multi-cluster warehouse + Resource Monitor with hard limits |
+| **Share data with dealers** (no copies) | Module 5 | Secure Data Sharing with zero-copy live access |
+| **Single platform** (no external tools) | All | Everything runs in Snowflake — ingestion, pipelines, dashboards |
 
 ## Features Covered
 

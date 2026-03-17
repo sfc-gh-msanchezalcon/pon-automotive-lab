@@ -181,6 +181,28 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic d
 | **Parkeeradres** | `ygq4-hh5q` | parkingaddressreference, zipcode (filter: parkingaddresstype='F') | 3,382 |
 | **SPECIFICATIES PARKEERGEBIED** | `b3us-f26s` | areamanagerid, chargingpointcapacity | 3,139 |
 
+### Data Loading Strategy
+
+> **Critical for RFP evaluation:** The datasets below are intentionally loaded at different coverage levels.
+
+| Dataset | PDF Volume | Lab Load | Coverage | Purpose |
+|---------|-----------|----------|----------|---------|
+| **Voertuigen per postcode** | 46,644 | 46,645 | **100%** | Primary source for regional EV analysis |
+| **SPECIFICATIES PARKEERGEBIED** | 3,139 | 3,139 | **100%** | Required for laadpalen (charging) correlation |
+| **Parkeeradres** | 3,792 | 3,382 | **89%** | Filtered per PDF: `parkingaddresstype='F'` |
+| **Gekentekende_voertuigen** | 16.7M | 50K | 0.3% | Sampled for time-series (optional analysis) |
+| **Gekentekende_voertuigen_brandstof** | 16.7M | 150K | 0.9% | Sampled for fuel trends (optional analysis) |
+
+**Why this approach:**
+
+1. **The core business question** from the PDF (*"Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?"*) requires:
+   - Vehicles by postcode → **100% loaded**
+   - Charging infrastructure → **100% loaded**
+   
+2. **The two sampled datasets** (16.7M rows each) are used only for supplementary time-series analysis, not the core deliverable.
+
+3. **Loading full 16.7M rows** would require ~2 hours and additional compute credits. For production, simply increase the `ROWCOUNT` parameters in the ingestion scripts.
+
 ### Data Model: Laadpalen per Postcode
 
 To create the target model "Laadpalen per postcode" (Postcode, Aantal), join the two parking/charging datasets:

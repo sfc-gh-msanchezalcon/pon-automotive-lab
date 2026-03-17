@@ -385,6 +385,33 @@ UNION ALL SELECT 'CHARGING_CAPACITY_RAW', COUNT(*) FROM PON_EV_LAB.RAW.CHARGING_
 
 Expected: ~50K vehicle registrations, ~47K vehicles by postcode, 150K fuel records, 3K parking, 3K charging.
 
+### Data Loading Strategy
+
+> **Important:** Understanding which datasets are fully loaded vs sampled is critical for accurate analysis.
+
+| Dataset | PDF Volume | Lab Load | Coverage | Why |
+|---------|-----------|----------|----------|-----|
+| **VEHICLES_BY_POSTCODE_RAW** | 46,644 | 46,645 | **100%** | Primary dataset for regional EV analysis - must be complete |
+| **CHARGING_CAPACITY_RAW** | 3,139 | 3,139 | **100%** | Required for laadpalen correlation - must be complete |
+| **PARKING_ADDRESS_RAW** | 3,792 | 3,382 | **89%** | Filtered to parkingaddresstype='F' per PDF requirements |
+| **VEHICLES_RAW** | 16.7M | 50K | 0.3% | Sampled - used only for time-series trends |
+| **VEHICLES_FUEL_RAW** | 16.7M | 150K | 0.9% | Sampled - used only for fuel classification |
+
+**Why this matters:**
+
+1. **The core business question** (*"Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?"*) is answered using:
+   - `VEHICLES_BY_POSTCODE_RAW` → **100% loaded**
+   - `CHARGING_CAPACITY_RAW` → **100% loaded**
+   - `PARKING_ADDRESS_RAW` → **89% loaded**
+
+2. **The sampled datasets** (VEHICLES_RAW, VEHICLES_FUEL_RAW) are only used for:
+   - Time-series trend analysis (BRANDSTOF_PER_POSTCODE_DATUM)
+   - Year-over-year growth calculations (EV_YOY_GROWTH)
+   
+   These are supplementary visualizations, not the core deliverable.
+
+3. **For production deployment**, increase the ROWCOUNT parameters to load full datasets (requires ~2 hours and additional credits).
+
 ### Scaling for Production (Facilitator Note)
 
 This lab uses controlled data volumes for a 2-hour workshop. For a pre-seeded demo environment with millions of rows:

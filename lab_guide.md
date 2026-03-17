@@ -811,6 +811,100 @@ PON_DEALER_SHARE (Data Share)
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
+## Bonus Module: Marketplace Data Enrichment
+
+**Duration: 10 minutes** | **Optional**
+
+> This module demonstrates how Snowflake Marketplace can enrich your analysis with third-party data. This is outside the core RFP scope but showcases a key platform differentiator.
+
+### Why Marketplace Matters
+
+Unlike Databricks or Fabric, Snowflake offers a **native data marketplace** with 2,500+ free and paid datasets. No ETL, no data movement, instant access.
+
+**Relevant datasets for EV analysis:**
+- Weather data (EV range varies by temperature)
+- Demographics (income, urbanization correlate with EV adoption)
+- Energy prices (charging costs impact ownership decisions)
+- CBS statistics (official Netherlands statistics)
+
+### Step 1: Browse Marketplace
+
+1. Navigate to **Data Products** → **Marketplace**
+2. Search for `netherlands` or `weather`
+3. Filter by **Free** datasets
+4. Look for datasets like:
+   - Knoema demographic data
+   - Open weather historical data
+   - CBS Netherlands statistics
+
+### Step 2: Get a Dataset
+
+For this example, we'll use a free weather dataset (actual availability may vary):
+
+1. Click **Get** on a weather dataset
+2. Accept the terms
+3. The data appears instantly in your account under **Data** → **Shared with Me**
+
+### Step 3: Query Combined Data
+
+Once you have access to a weather dataset (example structure):
+
+```sql
+-- Example: Correlate EV growth with average temperature by province
+-- Adjust table/column names based on actual Marketplace dataset
+
+SELECT 
+    e.PROVINCE,
+    e.YEAR,
+    e.YOY_GROWTH_PCT,
+    w.AVG_TEMPERATURE_C,
+    w.HEATING_DEGREE_DAYS
+FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH e
+LEFT JOIN WEATHER_DB.PUBLIC.NL_PROVINCE_WEATHER w
+    ON e.PROVINCE = w.PROVINCE
+    AND e.YEAR = w.YEAR
+ORDER BY e.YOY_GROWTH_PCT DESC;
+```
+
+### Step 4: Add to Streamlit
+
+You can extend the dashboard with a correlation analysis tab:
+
+```python
+# Add to streamlit_app.py - Marketplace Enrichment tab
+weather_tab = st.tabs(["Weather Correlation"])
+
+with weather_tab:
+    st.subheader("EV Adoption vs Temperature")
+    
+    # Scatter plot: temperature vs EV adoption rate
+    correlation_data = session.sql("""
+        SELECT PROVINCE, AVG_TEMP, EV_GROWTH_PCT 
+        FROM enriched_view
+    """).to_pandas()
+    
+    st.scatter_chart(correlation_data, x="AVG_TEMP", y="EV_GROWTH_PCT")
+```
+
+### Key Differentiator
+
+| Platform | Third-party Data | Integration Effort |
+|----------|------------------|-------------------|
+| **Snowflake** | 2,500+ datasets, instant access | Zero ETL |
+| Databricks | Delta Sharing (limited catalog) | Partner setup required |
+| Fabric | OneLake shortcuts (Microsoft ecosystem only) | Configuration needed |
+
+### Marketplace Value for Pon
+
+- **Dealer enrichment**: Add demographic data per region
+- **Demand forecasting**: Weather patterns affect EV range/charging
+- **Competitive analysis**: Combine with market share data
+- **Sustainability reporting**: Carbon intensity by energy source
+
+---
+
+<p align="center"><img src="assets/divider.svg" width="80%"></p>
+
 ## Appendix: Cleanup
 
 If you want to remove all lab resources:

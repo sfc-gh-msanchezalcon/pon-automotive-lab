@@ -470,14 +470,40 @@ SELECT
     END AS evs_per_parking_location
 FROM PON_EV_LAB.CURATED.EV_BY_REGION e
 LEFT JOIN (
-    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(DISTINCT areaid) AS parking_locations
+    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(*) AS parking_locations
     FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW 
+    WHERE zipcode IS NOT NULL AND zipcode != ''
     GROUP BY LEFT(zipcode, 2)
 ) p ON e.postal_area = p.postal_area
 WHERE e.total_vehicles > 5000;
 ```
 
-### 3.4 View Your Pipeline
+### 3.4 Create the Target Model: Laadpalen per Postcode
+
+This is a key target model from the PDF requirements - charging points by postal code:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Charging points per postal code - joins Parkeeradres with SPECIFICATIES'
+AS
+SELECT 
+    LEFT(p.zipcode, 4) AS postcode,
+    SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
+FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW p
+JOIN PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW c 
+    ON p.RAW_JSON:parkingaddressreference::STRING = c.areamanagerid
+WHERE p.parkingaddresstype = 'F'
+  AND p.zipcode IS NOT NULL 
+  AND p.zipcode != ''
+  AND TRY_CAST(c.chargingpointcapacity AS INT) > 0
+GROUP BY LEFT(p.zipcode, 4);
+```
+
+> **Data Model Note:** The join key is `parkingaddressreference` (from Parkeeradres) = `areamanagerid` (from SPECIFICATIES PARKEERGEBIED), NOT `areaid`. This links parking locations to their charging capacity.
+
+### 3.5 View Your Pipeline
 
 Check the Dynamic Table status:
 
@@ -485,7 +511,7 @@ Check the Dynamic Table status:
 SHOW DYNAMIC TABLES IN DATABASE PON_EV_LAB;
 ```
 
-### 3.5 Query the Results
+### 3.6 Query the Results
 
 ```sql
 -- Top regions by EV adoption
@@ -495,14 +521,19 @@ ORDER BY ev_percentage DESC LIMIT 10;
 -- Infrastructure correlation
 SELECT * FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
 ORDER BY evs_per_parking_location DESC LIMIT 10;
+
+-- Charging points by postal code (target model from PDF)
+SELECT * FROM PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
+ORDER BY aantal DESC LIMIT 10;
 ```
 
 ### Checkpoint
 
 You should see:
-- 3+ Dynamic Tables in CURATED and ANALYTICS schemas
+- 4+ Dynamic Tables in CURATED and ANALYTICS schemas
 - EV_BY_REGION showing ~90 postal areas with EV percentages
 - EV_INFRASTRUCTURE_CORRELATION showing EVs per parking location
+- LAADPALEN_PER_POSTCODE showing charging points by 4-digit postal code
 
 > **Stop and count:** How many DAG definitions did we write? How many trigger configurations? How many monitoring dashboards did we set up? Zero. The pipeline just works.
 

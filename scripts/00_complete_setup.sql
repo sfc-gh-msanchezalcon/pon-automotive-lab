@@ -202,10 +202,18 @@ SELECT e.postal_area, e.electric_vehicles, e.ev_percentage,
     CASE WHEN p.parking_locations > 0 THEN ROUND(e.electric_vehicles / p.parking_locations, 0) END AS evs_per_parking_location
 FROM CURATED.EV_BY_REGION e
 LEFT JOIN (
-    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(DISTINCT areaid) AS parking_locations
-    FROM RAW.PARKING_ADDRESS_RAW GROUP BY LEFT(zipcode, 2)
+    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(*) AS parking_locations
+    FROM RAW.PARKING_ADDRESS_RAW WHERE zipcode IS NOT NULL AND zipcode != '' GROUP BY LEFT(zipcode, 2)
 ) p ON e.postal_area = p.postal_area
 WHERE e.total_vehicles > 5000;
+
+-- Laadpalen per Postcode (Target Model from PDF: joins Parkeeradres with SPECIFICATIES via parkingaddressreference=areamanagerid)
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.LAADPALEN_PER_POSTCODE TARGET_LAG = '1 hour' WAREHOUSE = PON_ANALYTICS_WH AS
+SELECT LEFT(p.zipcode, 4) AS postcode, SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
+FROM RAW.PARKING_ADDRESS_RAW p
+JOIN RAW.CHARGING_CAPACITY_RAW c ON p.RAW_JSON:parkingaddressreference::STRING = c.areamanagerid
+WHERE p.parkingaddresstype = 'F' AND p.zipcode IS NOT NULL AND p.zipcode != '' AND TRY_CAST(c.chargingpointcapacity AS INT) > 0
+GROUP BY LEFT(p.zipcode, 4);
 
 -- =============================================================================
 -- MODULE 4: Cost Control

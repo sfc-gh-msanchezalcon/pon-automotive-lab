@@ -164,8 +164,18 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic d
 | **Gekentekende_voertuigen** | `m9d7-ebf2` | Kenteken, datum_eerste_tenaamstelling | 50,000 |
 | **Gekentekende_voertuigen_brandstof** | `8ys7-d773` | Kenteken, brandstof_omschrijving | 150,000 |
 | **Voertuigen per postcode** | `8wbe-pu7d` | Postcode, Brandstof, Aantal | 46,645 |
-| **Parkeeradres** | `ygq4-hh5q` | zipcode (filter: parkingaddresstype='F') | 3,382 |
-| **SPECIFICATIES PARKEERGEBIED** | `b3us-f26s` | areamanagerid, areaid, chargingpointcapacity | 3,139 |
+| **Parkeeradres** | `ygq4-hh5q` | parkingaddressreference, zipcode (filter: parkingaddresstype='F') | 3,382 |
+| **SPECIFICATIES PARKEERGEBIED** | `b3us-f26s` | areamanagerid, chargingpointcapacity | 3,139 |
+
+### Data Model: Laadpalen per Postcode
+
+To create the target model "Laadpalen per postcode" (Postcode, Aantal), join the two parking/charging datasets:
+
+```
+Parkeeradres.parkingaddressreference = SPECIFICATIES.areamanagerid
+```
+
+Then aggregate `chargingpointcapacity` by `zipcode` from Parkeeradres.
 
 ## Prerequisites
 

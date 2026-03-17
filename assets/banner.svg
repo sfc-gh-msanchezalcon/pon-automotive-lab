@@ -12,19 +12,26 @@
   <!-- Top accent line -->
   <rect x="0" y="0" width="100%" height="3" fill="#29B5E8" rx="8"/>
   
-  <!-- Pon Logo - simplified clean version -->
-  <g transform="translate(40, 55)">
-    <!-- PON text -->
-    <text x="0" y="45" font-family="Arial Black, Arial, sans-serif" font-size="48" font-weight="900" fill="white" letter-spacing="4">PON</text>
-    <!-- Underline -->
-    <rect x="0" y="55" width="130" height="3" fill="white"/>
+  <!-- Pon Logo - matching the actual logo style -->
+  <g transform="translate(40, 50)">
+    <!-- p - rounded rectangle with descender -->
+    <path d="M0,12 Q0,0 12,0 L28,0 Q40,0 40,12 L40,28 Q40,40 28,40 L12,40 L12,60 L0,60 L0,12 Z M12,10 L12,30 L28,30 Q30,30 30,28 L30,12 Q30,10 28,10 Z" fill="white"/>
+    
+    <!-- o - pill/rounded rectangle -->
+    <path d="M55,12 Q55,0 67,0 L83,0 Q95,0 95,12 L95,28 Q95,40 83,40 L67,40 Q55,40 55,28 Z M67,10 L67,30 L83,30 Q85,30 85,28 L85,12 Q85,10 83,10 Z" fill="white"/>
+    
+    <!-- n - rounded top corners -->
+    <path d="M110,40 L110,12 Q110,0 122,0 L138,0 Q150,0 150,12 L150,40 L138,40 L138,12 Q138,10 136,10 L124,10 Q122,10 122,12 L122,40 Z" fill="white"/>
+    
+    <!-- Underline - extends beyond text -->
+    <rect x="-5" y="68" width="160" height="4" fill="white"/>
   </g>
   
   <!-- Vertical divider -->
-  <rect x="200" y="40" width="2" height="100" fill="#29B5E8" opacity="0.4" rx="1"/>
+  <rect x="220" y="40" width="2" height="100" fill="#29B5E8" opacity="0.4" rx="1"/>
   
   <!-- Main title section -->
-  <g transform="translate(230, 0)">
+  <g transform="translate(250, 0)">
     <text x="0" y="70" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="white">
       EV Transition Netherlands
     </text>

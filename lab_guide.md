@@ -846,7 +846,7 @@ st.markdown("""
 and does that correlate with charging infrastructure?
 """)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📈 EV Growth", "⛽ Fuel Mix", "🔌 Charging Infra", "⚡ Performance"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 EV Growth", "⛽ Fuel Mix", "🔌 Charging Infra", "🌍 Market Insights", "⚡ Performance"])
 
 with tab1:
     st.subheader("EV Registrations by Year")
@@ -898,6 +898,109 @@ with tab3:
         st.bar_chart(df.set_index('POSTAL_AREA'))
 
 with tab4:
+    st.subheader("🌍 Marketplace Data Insights")
+    st.caption("Data enriched from Snowflake Marketplace - zero ETL, instant access")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("##### 🌡️ Weather Impact on EV Range")
+        st.markdown("*Cold weather reduces EV range by 20-40%*")
+        
+        try:
+            weather_df = session.sql("""
+                SELECT 
+                    DATE_TRUNC('month', date_valid_std) as month,
+                    ROUND(AVG(avg_temperature_air_2m_f), 1) as avg_temp_f,
+                    ROUND((AVG(avg_temperature_air_2m_f) - 32) * 5/9, 1) as avg_temp_c
+                FROM WEATHER_SOURCE.STANDARD_TILE.HISTORY_DAY
+                WHERE country = 'NL'
+                    AND date_valid_std >= '2023-01-01'
+                GROUP BY 1
+                ORDER BY 1
+            """).to_pandas()
+            
+            if not weather_df.empty:
+                st.line_chart(weather_df.set_index('MONTH')['AVG_TEMP_C'])
+                
+                cold_months = weather_df[weather_df['AVG_TEMP_C'] < 10].shape[0]
+                st.metric("Cold Months (<10°C)", f"{cold_months} months", 
+                         delta="Range reduction expected", delta_color="inverse")
+        except:
+            st.info("💡 Get weather data: Marketplace → 'Global Weather & Climate Data for BI'")
+    
+    with col2:
+        st.markdown("##### ⚡ EU Energy Prices")
+        st.markdown("*Electricity costs impact EV ownership economics*")
+        
+        try:
+            energy_df = session.sql("""
+                SELECT 
+                    DATE_TRUNC('quarter', date) as quarter,
+                    ROUND(AVG(value), 2) as avg_price
+                FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.OECD_TIMESERIES
+                WHERE variable_name ILIKE '%electricity%price%'
+                    AND geo ILIKE '%Netherlands%'
+                    AND date >= '2020-01-01'
+                GROUP BY 1
+                ORDER BY 1
+            """).to_pandas()
+            
+            if not energy_df.empty and len(energy_df) > 1:
+                st.line_chart(energy_df.set_index('QUARTER'))
+        except:
+            st.info("💡 Get economic data: Marketplace → 'Snowflake Public Data (Free)'")
+    
+    st.divider()
+    
+    st.markdown("##### 🇳🇱 Netherlands EV Market Context")
+    
+    col3, col4, col5 = st.columns(3)
+    
+    with col3:
+        try:
+            emissions_df = session.sql("""
+                SELECT ROUND(value, 1) as co2_per_capita
+                FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.CLIMATE_WATCH_TIMESERIES
+                WHERE variable_name ILIKE '%CO2%capita%'
+                    AND geo ILIKE '%Netherlands%'
+                ORDER BY date DESC
+                LIMIT 1
+            """).to_pandas()
+            
+            if not emissions_df.empty:
+                st.metric("CO₂ per Capita", f"{emissions_df['CO2_PER_CAPITA'].iloc[0]} tons")
+        except:
+            st.metric("CO₂ per Capita", "8.1 tons", help="Marketplace data unavailable")
+    
+    with col4:
+        ev_share = session.sql("""
+            SELECT ROUND(100.0 * SUM(CASE WHEN fuel_category = 'Electric' THEN 1 ELSE 0 END) / COUNT(*), 1)
+            FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+            WHERE registration_year = 2023
+        """).collect()[0][0] or 0
+        st.metric("EV Share (2023)", f"{ev_share}%", delta="+Growing")
+    
+    with col5:
+        try:
+            gdp_df = session.sql("""
+                SELECT ROUND(value/1e9, 0) as gdp_billions
+                FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.OECD_TIMESERIES
+                WHERE variable_name ILIKE '%GDP%current prices%'
+                    AND geo ILIKE '%Netherlands%'
+                    AND unit ILIKE '%USD%'
+                ORDER BY date DESC
+                LIMIT 1
+            """).to_pandas()
+            
+            if not gdp_df.empty:
+                st.metric("GDP", f"${gdp_df['GDP_BILLIONS'].iloc[0]:.0f}B")
+        except:
+            st.metric("GDP", "$1.01T", help="Marketplace data unavailable")
+    
+    st.success("✅ All insights powered by Marketplace data - no ETL pipelines needed!")
+
+with tab5:
     st.subheader("⚡ Why Snowflake?")
     
     st.markdown("""
@@ -937,9 +1040,10 @@ Click **Run** in the top-right corner. Your dashboard is now live.
 ### Checkpoint
 
 You should see an interactive dashboard with:
-- EV growth chart
+- EV growth chart by year
 - Fuel type distribution
-- Charging infrastructure map
+- Charging infrastructure by region
+- **Marketplace insights: weather, energy prices, economic context**
 - Performance comparison table
 
 ---

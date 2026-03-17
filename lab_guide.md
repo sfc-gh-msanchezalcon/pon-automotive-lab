@@ -192,7 +192,7 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION rdw_api_access
     COMMENT = 'External access for RDW Open Data API calls';
 ```
 
-> **Why This Matters:** With Databricks, you'd need to configure network egress at the cluster level or use a separate service. With Fabric, you'd need Data Factory pipelines. Snowflake makes it declarative and auditable.
+> **Why This Matters:** Other platforms require configuring network egress at the cluster/workspace level or using separate ingestion services. Snowflake's External Access Integration is declarative, auditable, and requires no additional infrastructure.
 
 ### 2.3 Create the API Fetching Function
 
@@ -327,6 +327,20 @@ UNION ALL SELECT 'CHARGING_CAPACITY_RAW', COUNT(*) FROM PON_EV_LAB.RAW.CHARGING_
 
 Expected: 50K+ vehicles, 150K+ fuel records, 3K+ parking, 3K+ charging.
 
+### Scaling for Production (Facilitator Note)
+
+This lab uses controlled data volumes for a 2-hour workshop. For a pre-seeded demo environment with millions of rows:
+
+| Dataset | Lab Setting | Production Setting |
+|---------|-------------|-------------------|
+| Vehicles | `ROWCOUNT => 50` (50K) | `ROWCOUNT => 500` (500K+) |
+| Fuel Types | `ROWCOUNT => 150` (150K) | `ROWCOUNT => 1000` (1M+) |
+
+To demonstrate the "6-hour queries to seconds" story:
+1. Pre-load millions of rows in a demo account
+2. Use a MEDIUM or LARGE warehouse for the performance test
+3. Show query history comparing execution times
+
 ---
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
@@ -336,6 +350,8 @@ Expected: 50K+ vehicles, 150K+ fuel records, 3K+ parking, 3K+ charging.
 **Duration: 20 minutes**
 
 Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh. No Airflow, no Data Factory, no cron jobs.
+
+> **💡 Talking Point:** In other platforms, you'd need a separate orchestration tool (Airflow, Data Factory, Workflows) to schedule and monitor these transformations. With Dynamic Tables, it's just SQL — Snowflake handles the scheduling, dependencies, and incremental refresh automatically.
 
 ### 3.1 Create the Curated Layer
 
@@ -508,9 +524,7 @@ CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
     COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
 ```
 
-> **vs. Databricks:** You'd manually configure autoscaling ranges and wait 2-5 minutes for cluster spin-up.
-> 
-> **vs. Fabric:** Capacity units are shared across the workspace. Heavy users affect everyone.
+> **Snowflake Advantage:** Warehouses resume in under 1 second. No cold-start delays, no capacity planning. You pay only while queries run.
 
 ### 4.2 Create a Resource Monitor
 
@@ -572,6 +586,8 @@ Your warehouse should show:
 **Duration: 15 minutes**
 
 This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
+
+> **💡 Talking Point:** This is zero-copy sharing — dealers query your live data directly. No exports, no transfers, no stale copies. When you update the data, they see it immediately. And it works across any cloud provider.
 
 ### 5.1 Create a Data Share
 
@@ -648,9 +664,30 @@ SELECT * FROM PON_EV_DATA.ANALYTICS.EV_YOY_GROWTH;
 | **Full Audit Trail** | Know exactly who queried what and when |
 | **Cross-Cloud** | Works even if dealers are on different cloud providers |
 
-> **vs. Databricks:** Delta Sharing requires a separate setup, different protocol, and often involves data copies for cross-cloud scenarios.
-> 
-> **vs. Fabric:** No native cross-organization sharing capability.
+> **Snowflake Advantage:** Secure Data Sharing works across any cloud, any region, with no data movement. Recipients query live data directly — always current, never stale.
+
+### 5.6 Production Governance (Conceptual)
+
+In production, Pon would likely need different dealers to see different data. Snowflake supports this with:
+
+**Row Access Policies** — Filter data by dealer identity:
+```sql
+-- Example: Each dealer sees only their region's data
+CREATE ROW ACCESS POLICY dealer_region_policy AS (region STRING)
+RETURNS BOOLEAN -> region IN (SELECT allowed_region FROM dealer_permissions WHERE dealer_id = CURRENT_ROLE());
+```
+
+**Masking Policies** — Hide sensitive columns:
+```sql
+-- Example: Mask license plates for non-admin users
+CREATE MASKING POLICY mask_kenteken AS (val STRING)
+RETURNS STRING -> CASE WHEN IS_ROLE_IN_SESSION('ADMIN') THEN val ELSE '****' END;
+```
+
+**Separate Shares per Dealer Group** — Different data views for different partners:
+- `PON_DEALER_SHARE_NORTH` — Northern region dealers
+- `PON_DEALER_SHARE_SOUTH` — Southern region dealers
+- `PON_OEM_SHARE` — Manufacturer partners (aggregated only)
 
 ---
 
@@ -664,7 +701,7 @@ In the previous module, you shared YOUR data with partners. Now let's do the rev
 
 ### Why Marketplace Matters
 
-Unlike Databricks or Fabric, Snowflake offers a **native data marketplace** with 2,500+ free and paid datasets. No ETL, no data movement, instant access.
+Snowflake Marketplace offers **2,500+ datasets** that appear instantly in your account — no ETL, no data movement, no storage costs for shared data.
 
 ### 6.1 Get the Datasets
 
@@ -789,11 +826,11 @@ LIMIT 20;
 
 ### Key Differentiator
 
-| Platform | Third-party Data | Integration Effort |
-|----------|------------------|-------------------|
-| **Snowflake** | 2,500+ datasets, instant access | Zero ETL |
-| Databricks | Delta Sharing (limited catalog) | Partner setup required |
-| Fabric | OneLake shortcuts (Microsoft ecosystem only) | Configuration needed |
+| Platform | Third-party Data Access | Notes |
+|----------|------------------------|-------|
+| **Snowflake** | 2,500+ datasets, instant access | Zero ETL, zero storage duplication |
+| Databricks | Unity Catalog Marketplace | Growing catalog, Delta Sharing based |
+| Fabric | OneLake shortcuts | Microsoft ecosystem focused |
 
 ### Marketplace Value for Pon
 
@@ -813,7 +850,9 @@ LIMIT 20;
 
 **Duration: 15 minutes**
 
-Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment. This is the visualization layer that brings everything together.
+Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment. This is the visualization layer that brings everything together — and **answers the business question**.
+
+> **💡 Talking Point:** The Streamlit app runs natively in Snowflake. No Docker, no Kubernetes, no separate infrastructure. It queries your Dynamic Tables directly and inherits all your governance controls.
 
 ### 7.1 Create the Streamlit App
 
@@ -833,7 +872,8 @@ Copy the code from `streamlit_app.py` in this repository. The full source code c
 - **5 tabs**: Regional Analysis, EV vs Infrastructure, Trends & Insights, Fuel Mix, Platform
 - **Dutch postal code mapping** for human-readable region names
 - **Data-driven insights** from live Dynamic Table queries
-- **"Why Snowflake?" comparison table** (without explicitly naming competitors)
+- **Business question answered** in Tab 2 with explicit correlation analysis
+- **"Why Snowflake?" comparison table** highlighting platform strengths
 
 The dashboard queries these Dynamic Tables:
 - `CURATED.EV_BY_REGION` - Regional EV adoption metrics
@@ -878,17 +918,20 @@ You should see an interactive dashboard with:
 | Data Enrichment | Marketplace | Instant third-party data |
 | Dashboard | Streamlit in Snowflake | No separate hosting |
 
-### Key Differentiators
+### Snowflake Strengths Demonstrated
 
-**vs. Databricks:**
-- No cluster management or spin-up time
-- Native sharing without Delta Sharing setup
-- Streamlit built-in vs. separate deployment
+**What we showcased:**
+- Instant warehouse startup (no cold-start delays)
+- Zero-copy data sharing (works across clouds)
+- Streamlit natively integrated (no separate deployment)
+- Dynamic Tables (declarative, SQL-native pipelines)
+- External Access (API calls without middleware)
 
-**vs. Microsoft Fabric:**
-- No capacity unit complexity
-- No shared pool throttling
-- True cross-organization sharing
+**Why this matters for Pon:**
+- Faster time-to-insight (no infrastructure setup)
+- Lower operational overhead (no cluster management)
+- Simpler data collaboration (share with dealers instantly)
+- Unified platform (data engineering to dashboards)
 
 ### Resources Created
 

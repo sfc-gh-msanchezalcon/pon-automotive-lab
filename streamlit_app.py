@@ -158,7 +158,7 @@ with tab1:
 # ============ TAB 2: EV VS INFRASTRUCTURE CORRELATION ============
 with tab2:
     st.markdown('<p class="section-header">Does Charging Infrastructure Correlate with EV Adoption?</p>', unsafe_allow_html=True)
-    st.caption("Comparing EV registrations with available parking/charging locations by region")
+    st.caption("Answering Pon's key question: Which regions lead in EV growth, and how does charging infrastructure compare?")
     
     col1, col2 = st.columns([2, 1])
     
@@ -193,6 +193,16 @@ with tab2:
         
         st.markdown("---")
         st.warning(f"⚠️ **Infrastructure Gap:** {get_region_name(max_row['POSTAL_AREA'])} has {max_row['ELECTRIC_VEHICLES']:,} EVs but only {max_row['PARKING_LOCATIONS']} parking locations — potential expansion opportunity")
+    
+    st.markdown("---")
+    
+    st.success(f"""
+    **📊 Answer to the Business Question:**
+    
+    **{get_region_name(df_corr.iloc[0]['POSTAL_AREA'])}** leads with **{df_corr.iloc[0]['ELECTRIC_VEHICLES']:,}** EVs and **{df_corr.iloc[0]['EV_PERCENTAGE']}%** adoption rate.
+    However, **{get_region_name(max_row['POSTAL_AREA'])}** shows the biggest infrastructure gap with **{int(max_row['EVS_PER_PARKING_LOCATION']):,}** EVs per parking location — 
+    a clear opportunity for charging network expansion.
+    """)
     
     st.markdown("---")
     st.markdown('<p class="section-header">Detailed Regional Comparison</p>', unsafe_allow_html=True)
@@ -428,15 +438,15 @@ with tab5:
     
     st.markdown("### ⚡ Why Snowflake?")
     st.markdown("""
-    | Capability | Other Platforms | Snowflake |
-    |------------|-----------------|-----------|
-    | **API Ingestion** | Separate ingestion tool + compute cluster + scheduler | Built-in `EXTERNAL ACCESS` — no extra services |
-    | **Data Pipelines** | Orchestrator (Airflow/ADF) + DAGs + monitoring + retries | `CREATE DYNAMIC TABLE` — declarative, auto-refresh |
-    | **Real-time Refresh** | Complex CDC setup + streaming infrastructure | `TARGET_LAG = '1 hour'` — one parameter |
-    | **Partner Data Sharing** | Export → Transfer → Import (copies everywhere) | `GRANT TO SHARE` — zero-copy, live access |
-    | **Governance** | Bolt-on tools, manual lineage tracking | Native lineage, RBAC, automatic audit |
-    | **Scaling** | Cluster sizing, manual tuning, capacity planning | Automatic — pay per query, instant scale |
-    | **Dashboard** | Separate BI tool + data extracts + refresh jobs | Streamlit in Snowflake — same platform |
+    | Capability | Traditional Approach | Snowflake Approach |
+    |------------|---------------------|-------------------|
+    | **API Ingestion** | Separate tool + compute + scheduler | Built-in `EXTERNAL ACCESS` — unified platform |
+    | **Data Pipelines** | Orchestrator + DAGs + monitoring | `CREATE DYNAMIC TABLE` — declarative SQL |
+    | **Real-time Refresh** | CDC setup + streaming infrastructure | `TARGET_LAG = '1 hour'` — one parameter |
+    | **Partner Data Sharing** | Export → Transfer → Import | `GRANT TO SHARE` — zero-copy, live access |
+    | **Governance** | Multiple tools, manual integration | Native lineage, RBAC, automatic audit |
+    | **Scaling** | Capacity planning, manual tuning | Automatic — instant scale, per-second billing |
+    | **Analytics UI** | Separate BI tool + data extracts | Streamlit in Snowflake — same platform |
     """)
 
 # ============ FOOTER ============

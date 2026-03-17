@@ -107,13 +107,13 @@ Pon's pain points and how Snowflake addresses them:
 
 | Capability | Snowflake | Databricks | Microsoft Fabric |
 |------------|-----------|------------|------------------|
-| **Cluster Management** | None (serverless) | Manual cluster config | Capacity units |
-| **Startup Time** | Instant | 2-5 minutes | Variable |
-| **Concurrent Users** | Auto-scale out | Manual scaling | Shared capacity (throttling) |
-| **Pipeline Orchestration** | Dynamic Tables | Requires Workflows/Airflow | Requires Data Factory |
-| **Cost Control** | Resource Monitors | DBU tracking (complex) | Capacity allocation |
-| **Cross-Org Data Sharing** | Native (zero-copy) | Delta Sharing (separate) | Not available |
-| **Embedded BI** | Streamlit native | Separate deployment | Power BI (separate) |
+| **Cluster Management** | None (fully serverless) | Serverless SQL available; classic clusters require config | Capacity units to manage |
+| **Startup Time** | Instant (<1s) | Serverless: ~15s; Classic: 2-5 min | Depends on capacity mode |
+| **Concurrent Users** | Auto-scale out (transparent) | Auto-scale available | Shared capacity model |
+| **Declarative Pipelines** | Dynamic Tables (SQL-native) | Delta Live Tables (Python/SQL) | Dataflows (Power Query) |
+| **Cost Control** | Resource Monitors (hard limits) | Budgets + DBU tracking | Capacity allocation |
+| **Cross-Org Data Sharing** | Native zero-copy (any cloud) | Delta Sharing (Unity Catalog required) | External sharing (limited) |
+| **Embedded BI** | Streamlit (native) | Dashboards (native) | Power BI (native) |
 
 ## Features Covered
 

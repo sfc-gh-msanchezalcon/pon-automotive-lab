@@ -1,5 +1,3 @@
-<img src="assets/border.svg" width="100%">
-
 <p align="center">
   <img src="assets/banner.svg" alt="Pon Automotive EV Transition Lab" width="100%">
 </p>
@@ -172,7 +170,6 @@ pon-automotive-lab/
 ├── lab_guide.md              ← Full step-by-step lab guide (start here!)
 ├── assets/
 │   ├── banner.svg            ← GitHub banner (Pon branded)
-│   ├── border.svg            ← Orange gradient bar
 │   └── divider.svg           ← Section divider
 ├── scripts/
 │   ├── 00_complete_setup.sql ← All SQL in one file (facilitator backup)

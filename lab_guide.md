@@ -1,5 +1,3 @@
-<img src="assets/border.svg" width="100%">
-
 <p align="center">
   <img src="assets/banner.svg" alt="Pon Automotive EV Transition Lab" width="100%">
 </p>
@@ -886,4 +884,4 @@ DROP NETWORK RULE IF EXISTS rdw_api_rule;
   <img src="https://img.shields.io/badge/Powered_by-Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white" alt="Powered by Snowflake">
 </p>
 
-<img src="assets/border.svg" width="100%">
+

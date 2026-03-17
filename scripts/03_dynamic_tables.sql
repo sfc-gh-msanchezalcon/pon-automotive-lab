@@ -4,7 +4,7 @@ PON AUTOMOTIVE - EV TRANSITION NETHERLANDS
 Module 3: Dynamic Tables Pipeline
 =============================================================================
 Dynamic Tables provide declarative, automatically refreshing pipelines.
-No Airflow, no Data Factory, no cron jobs - just SQL.
+No external orchestration required - just SQL.
 =============================================================================
 */
 

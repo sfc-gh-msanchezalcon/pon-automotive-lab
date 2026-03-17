@@ -135,7 +135,7 @@ Pon's pain points and how Snowflake addresses them:
 | **RDW Open Data APIs** with pagination (1000 row limit) | Module 2 | Python UDF with External Access handles `$limit` and `$offset` pattern |
 | **Voertuigen met brandstof per postcode** dataset | Module 2 | Ingested via `8wbe-pu7d` API into `VEHICLES_BY_POSTCODE_RAW` |
 | **RAW → CURATED → ANALYTICS** pipeline | Module 3 | Three-schema medallion architecture with Dynamic Tables |
-| **No manual orchestration** | Module 3 | Dynamic Tables with `TARGET_LAG` replace Airflow/schedulers |
+| **No manual orchestration** | Module 3 | Dynamic Tables with `TARGET_LAG` — no external scheduler needed |
 | **Cost control and scaling** | Module 4 | Multi-cluster warehouse + Resource Monitor with hard limits |
 | **Share data with dealers** (no copies) | Module 5 | Secure Data Sharing with zero-copy live access |
 | **Single platform** (no external tools) | All | Everything runs in Snowflake — ingestion, pipelines, dashboards |

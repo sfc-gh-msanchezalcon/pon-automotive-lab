@@ -27,7 +27,7 @@ In this lab, you'll build a complete data engineering solution to analyze the **
 This lab focuses on the **data engineering fundamentals** that matter most:
 
 - Real API data: Not synthetic, not CSV uploads, actual live government APIs
-- Zero orchestration: Dynamic Tables replace Airflow/Data Factory complexity
+- Zero orchestration: Dynamic Tables eliminate the need for external schedulers
 - Cost control built-in: Resource monitors prevent runaway spending
 - Production-ready sharing: Share live data with partners, no copies
 
@@ -349,9 +349,9 @@ To demonstrate the "6-hour queries to seconds" story:
 
 **Duration: 20 minutes**
 
-Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh. No Airflow, no Data Factory, no cron jobs.
+Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh — no external orchestration required.
 
-> **💡 Talking Point:** In other platforms, you'd need a separate orchestration tool (Airflow, Data Factory, Workflows) to schedule and monitor these transformations. With Dynamic Tables, it's just SQL — Snowflake handles the scheduling, dependencies, and incremental refresh automatically.
+> **💡 Talking Point:** With Dynamic Tables, there's no separate scheduler to configure or monitor. Snowflake handles the refresh logic, dependencies, and incremental updates automatically. You just write SQL.
 
 ### 3.1 Create the Curated Layer
 

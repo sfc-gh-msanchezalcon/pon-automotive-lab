@@ -428,7 +428,7 @@ with tab5:
     with col2:
         st.markdown("### 💡 Key Concepts")
         
-        st.info("**Dynamic Tables** — Declarative pipelines that auto-refresh. No Airflow, no schedulers.")
+        st.info("**Dynamic Tables** — Declarative pipelines that auto-refresh. No external scheduler needed.")
         
         st.success("**External Access** — Call APIs directly from SQL. No middleware needed.")
         

@@ -815,7 +815,7 @@ PON_DEALER_SHARE (Data Share)
 
 **Duration: 10 minutes** | **Optional**
 
-> This module demonstrates how Snowflake Marketplace can enrich your analysis with third-party data. This is outside the core RFP scope but showcases a key platform differentiator.
+> This module demonstrates how Snowflake Marketplace can enrich your analysis with third-party data. This is outside the core use case scope but showcases a key platform differentiator.
 
 ### Why Marketplace Matters
 

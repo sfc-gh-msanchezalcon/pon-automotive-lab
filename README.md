@@ -2,10 +2,10 @@
   <img src="assets/banner.svg" alt="Pon Automotive EV Transition Lab" width="100%">
 </p>
 
-<h1 align="center">Pon Automotive — EV Transition Netherlands</h1>
+<h1 align="center">Pon Automotive: EV Transition Netherlands</h1>
 
 <p align="center">
-  <b>Hands-on: Building Scalable Data Pipelines for Electric Vehicle Analytics</b>
+  <b>Build Scalable Data Pipelines for Electric Vehicle Analytics</b>
 </p>
 
 <p align="center">
@@ -18,29 +18,25 @@
 
 ## The Business Challenge
 
-**Pon Automotive** manages one of the largest vehicle portfolios in the Netherlands. With the accelerating shift to electric vehicles, leadership needs to answer a critical question:
+**Pon Automotive** manages one of the largest vehicle portfolios in the Netherlands. With the accelerating shift to electric vehicles, leadership needs to answer:
 
 > *"Which region in the Netherlands has the fastest EV growth, and does that correlate with charging infrastructure availability?"*
 
-This insight drives strategic decisions about:
-- Dealership inventory allocation
-- Charging station partnerships
-- Regional marketing campaigns
-- Fleet transition planning
+This insight drives decisions about dealership inventory, charging station partnerships, regional marketing, and fleet transition planning.
 
 ## What You Will Build
 
-In this lab you will create an end-to-end data engineering solution using **real Dutch government data** — entirely within Snowflake. No external tools, no complex orchestration, no cluster management.
+A complete data engineering solution using **real Dutch government data**, all within Snowflake. No external tools, no complex orchestration, no cluster management.
 
 By the end you will have:
 
-1. **Live API Data Ingestion** — Real-time data from RDW (Dutch Vehicle Authority) using External Access Integration
-2. **Automated Data Pipelines** — Dynamic Tables that refresh automatically with zero orchestration
-3. **Cost-Controlled Analytics** — Multi-cluster warehouses with resource monitors
-4. **Cross-Organization Data Sharing** — Secure sharing with dealers (no data copies!)
-5. **Interactive Dashboard** — Streamlit in Snowflake for EV growth visualization
+1. **Live API Data Ingestion**: Real-time data from RDW (Dutch Vehicle Authority) using External Access Integration
+2. **Automated Data Pipelines**: Dynamic Tables that refresh automatically with zero orchestration
+3. **Cost-Controlled Analytics**: Multi-cluster warehouses with resource monitors
+4. **Cross-Organization Data Sharing**: Secure sharing with dealers (no data copies)
+5. **Interactive Dashboard**: Streamlit in Snowflake for EV growth visualization
 
-### Architecture Overview
+### Architecture
 
 ```
                          SNOWFLAKE ACCOUNT
@@ -88,9 +84,9 @@ By the end you will have:
     └─────────────────────────────────────────────────────────┘
 ```
 
-## Why Snowflake? (vs. Databricks & Fabric)
+## Why Snowflake?
 
-Pon's current pain points and how Snowflake solves them:
+Pon's pain points and how Snowflake addresses them:
 
 | Pain Point | Current State | Snowflake Solution |
 |------------|--------------|-------------------|
@@ -100,7 +96,7 @@ Pon's current pain points and how Snowflake solves them:
 | **High maintenance costs** | Complex pipelines | Dynamic Tables (no orchestration) |
 | **Data silos** | Copies everywhere | Secure Data Sharing (live, no copies) |
 
-### Head-to-Head Comparison
+### Platform Comparison
 
 | Capability | Snowflake | Databricks | Microsoft Fabric |
 |------------|-----------|------------|------------------|
@@ -112,7 +108,7 @@ Pon's current pain points and how Snowflake solves them:
 | **Cross-Org Data Sharing** | Native (zero-copy) | Delta Sharing (separate) | Not available |
 | **Embedded BI** | Streamlit native | Separate deployment | Power BI (separate) |
 
-## Snowflake Features Covered
+## Features Covered
 
 | Feature | Description | Module |
 |---------|-------------|--------|
@@ -127,7 +123,7 @@ Pon's current pain points and how Snowflake solves them:
 
 ## Data Sources
 
-All data comes from **RDW Open Data** (Dutch Vehicle Authority) — the same datasets specified in the project requirements:
+All data comes from **RDW Open Data** (Dutch Vehicle Authority), the same datasets specified in the project requirements:
 
 | Dataset | RDW ID | Description | Records |
 |---------|--------|-------------|---------|
@@ -138,8 +134,8 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority) — the same dat
 
 ## Prerequisites
 
-- A Snowflake account with **ACCOUNTADMIN** access (trial accounts work!)
-- A web browser — everything runs inside Snowflake
+- Snowflake account with **ACCOUNTADMIN** access (trial accounts work)
+- Web browser (everything runs inside Snowflake)
 
 ## Lab Agenda
 
@@ -158,18 +154,18 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority) — the same dat
 
 ## Getting Started
 
-1. Open the **[Lab Guide](lab_guide.md)** — this is the step-by-step walkthrough
+1. Open the **[Lab Guide](lab_guide.md)** for the step-by-step walkthrough
 2. Start at **Module 0** to set up your environment
-3. Follow each module in order — every step explains *what* and *why*
+3. Follow each module in order
 
 ## Repository Contents
 
 ```
 pon-automotive-lab/
 ├── README.md                 ← You are here
-├── lab_guide.md              ← Full step-by-step lab guide (start here!)
+├── lab_guide.md              ← Full step-by-step lab guide (start here)
 ├── assets/
-│   ├── banner.svg            ← GitHub banner (Pon branded)
+│   ├── banner.svg            ← GitHub banner
 │   └── divider.svg           ← Section divider
 ├── scripts/
 │   ├── 00_complete_setup.sql ← All SQL in one file (facilitator backup)
@@ -178,23 +174,21 @@ pon-automotive-lab/
 │   ├── 03_dynamic_tables.sql ← Module 3: Automated pipelines
 │   ├── 04_scaling_cost.sql   ← Module 4: Warehouses and monitors
 │   └── 05_data_sharing.sql   ← Module 5: Secure sharing
-├── facilitator/
-│   └── setup_checklist.md    ← Pre-lab setup for facilitators
 ├── streamlit_app.py          ← Dashboard code
 ├── environment.yml           ← Conda dependencies for Streamlit
-└── requirements.txt          ← Alternative pip dependencies
+└── requirements.txt          ← Pip dependencies
 ```
 
 ## About This Lab
 
-This lab was designed specifically for **Pon Automotive** to demonstrate how Snowflake addresses their data engineering challenges. The use case, data sources, and architecture directly reflect the "EV Transitie NL" project requirements.
+Built for **Pon Automotive** to show how Snowflake addresses their data engineering challenges. The use case, data sources, and architecture reflect the "EV Transitie NL" project requirements.
 
-**Key differentiators demonstrated:**
-- **Zero infrastructure management** — No clusters to configure or manage
-- **Automatic pipelines** — Dynamic Tables replace complex orchestration
-- **Instant scalability** — Warehouses scale in seconds, not minutes
-- **Native data sharing** — Share live data with dealers without copies
-- **Unified platform** — Data engineering to dashboards in one place
+**Key differentiators:**
+- Zero infrastructure management (no clusters to configure)
+- Automatic pipelines (Dynamic Tables replace orchestration)
+- Instant scalability (warehouses scale in seconds)
+- Native data sharing (share live data with dealers, no copies)
+- Unified platform (data engineering to dashboards in one place)
 
 ---
 

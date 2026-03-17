@@ -2,10 +2,10 @@
   <img src="assets/banner.svg" alt="Pon Automotive EV Transition Lab" width="100%">
 </p>
 
-<h1 align="center">Pon Automotive — EV Transition Lab</h1>
+<h1 align="center">Pon Automotive: EV Transition Lab</h1>
 
 <p align="center">
-  <b>Hands-on: Building Scalable Data Pipelines for Electric Vehicle Analytics</b>
+  <b>Build Scalable Data Pipelines for Electric Vehicle Analytics</b>
 </p>
 
 <p align="center">
@@ -16,22 +16,22 @@
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Welcome!
+## Welcome
 
-In this hands-on lab, you'll build a complete data engineering solution to analyze the **Electric Vehicle transition in the Netherlands**. You'll work with real government data from RDW (Dutch Vehicle Authority) and create automated pipelines that answer a key business question:
+In this lab, you'll build a complete data engineering solution to analyze the **Electric Vehicle transition in the Netherlands**. You'll work with real government data from RDW (Dutch Vehicle Authority) and create automated pipelines that answer a key business question:
 
 > *"Which region has the fastest EV growth, and does that correlate with charging infrastructure?"*
 
 ### What Makes This Lab Different
 
-Unlike traditional demos, this lab focuses on the **data engineering fundamentals** that matter most:
+This lab focuses on the **data engineering fundamentals** that matter most:
 
-- ✅ **Real API data** — Not synthetic, not CSV uploads, actual live government APIs
-- ✅ **Zero orchestration** — Dynamic Tables replace Airflow/Data Factory complexity
-- ✅ **Cost control built-in** — Resource monitors prevent runaway spending
-- ✅ **Production-ready sharing** — Share live data with partners, no copies
+- ✅ **Real API data**: Not synthetic, not CSV uploads, actual live government APIs
+- ✅ **Zero orchestration**: Dynamic Tables replace Airflow/Data Factory complexity
+- ✅ **Cost control built-in**: Resource monitors prevent runaway spending
+- ✅ **Production-ready sharing**: Share live data with partners, no copies
 
-Let's get started!
+Let's get started.
 
 ---
 
@@ -59,7 +59,7 @@ In the top-right corner of Snowsight, click on your username and verify:
 2. Click **+ New Workspace** and name it `Pon EV Lab`
 3. Create a new SQL file to start writing queries
 
-You're ready to begin!
+You're ready to begin.
 
 ---
 
@@ -82,26 +82,21 @@ We'll create a **medallion architecture** with three layers:
 ### 1.1 Create the Database
 
 ```sql
--- Create the main database for our EV analytics project
 CREATE DATABASE IF NOT EXISTS PON_EV_LAB
     COMMENT = 'Pon Automotive - EV Transition Netherlands Analytics';
 
--- Switch to the new database
 USE DATABASE PON_EV_LAB;
 ```
 
 ### 1.2 Create the Schema Layers
 
 ```sql
--- Bronze layer: Raw data from external sources
 CREATE SCHEMA IF NOT EXISTS RAW
     COMMENT = 'Raw data from RDW APIs - unchanged source data';
 
--- Silver layer: Cleaned and joined data
 CREATE SCHEMA IF NOT EXISTS CURATED
     COMMENT = 'Curated data - cleaned, validated, and joined';
 
--- Gold layer: Business-ready analytics
 CREATE SCHEMA IF NOT EXISTS ANALYTICS
     COMMENT = 'Analytics layer - aggregations and business metrics';
 ```
@@ -111,7 +106,6 @@ CREATE SCHEMA IF NOT EXISTS ANALYTICS
 ```sql
 USE SCHEMA RAW;
 
--- Registered vehicles (gekentekende voertuigen)
 CREATE TABLE IF NOT EXISTS VEHICLES_RAW (
     kenteken STRING COMMENT 'License plate number (primary key)',
     datum_eerste_tenaamstelling_in_nederland STRING COMMENT 'First registration date in NL (YYYYMMDD)',
@@ -121,14 +115,12 @@ CREATE TABLE IF NOT EXISTS VEHICLES_RAW (
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
--- Fuel types per vehicle
 CREATE TABLE IF NOT EXISTS VEHICLES_FUEL_RAW (
     kenteken STRING COMMENT 'License plate number (foreign key)',
     brandstof_omschrijving STRING COMMENT 'Fuel type description',
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
--- Parking locations with charging
 CREATE TABLE IF NOT EXISTS PARKING_ADDRESS_RAW (
     areaid STRING COMMENT 'Parking area identifier',
     areamanagerid STRING COMMENT 'Area manager identifier',
@@ -137,7 +129,6 @@ CREATE TABLE IF NOT EXISTS PARKING_ADDRESS_RAW (
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
 
--- Charging capacity per location
 CREATE TABLE IF NOT EXISTS CHARGING_CAPACITY_RAW (
     areaid STRING COMMENT 'Parking area identifier',
     areamanagerid STRING COMMENT 'Area manager identifier',
@@ -165,14 +156,13 @@ You should see 3 schemas and 4 tables.
 
 **Duration: 25 minutes**
 
-This is where Snowflake shines. We'll fetch data directly from external APIs **without any external tools** — no Python scripts on your laptop, no AWS Lambda, no Azure Functions.
+This is where Snowflake shines. We'll fetch data directly from external APIs **without any external tools**: no Python scripts on your laptop, no AWS Lambda, no Azure Functions.
 
 ### 2.1 Create Network Access Rule
 
 First, we tell Snowflake which external endpoints are allowed:
 
 ```sql
--- Create a network rule to allow outbound calls to RDW APIs
 CREATE OR REPLACE NETWORK RULE rdw_api_rule
     MODE = EGRESS
     TYPE = HOST_PORT
@@ -185,7 +175,6 @@ CREATE OR REPLACE NETWORK RULE rdw_api_rule
 Now we create an integration that uses this rule:
 
 ```sql
--- Create the external access integration
 CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION rdw_api_access
     ALLOWED_NETWORK_RULES = (rdw_api_rule)
     ENABLED = TRUE
@@ -196,7 +185,7 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION rdw_api_access
 
 ### 2.3 Create the API Fetching Function
 
-This Python UDF handles pagination — the RDW API returns data in chunks:
+This Python UDF handles pagination (the RDW API returns data in chunks):
 
 ```sql
 CREATE OR REPLACE FUNCTION PON_EV_LAB.RAW.FETCH_RDW_DATA(
@@ -215,17 +204,6 @@ AS $$
 import requests
 
 def fetch_data(dataset_id, row_limit, row_offset):
-    """
-    Fetch data from RDW Open Data API with pagination.
-    
-    Args:
-        dataset_id: The Socrata dataset identifier (e.g., 'm9d7-ebf2')
-        row_limit: Number of rows to fetch per request (max 50000)
-        row_offset: Starting row offset for pagination
-    
-    Returns:
-        JSON array of records
-    """
     url = f"https://opendata.rdw.nl/resource/{dataset_id}.json"
     params = {
         "$limit": row_limit,
@@ -244,31 +222,26 @@ $$;
 Let's verify everything works:
 
 ```sql
--- Test: Fetch 5 vehicle records
 SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 5, 0) AS sample_data;
 ```
 
-You should see a JSON array with vehicle data!
+You should see a JSON array with vehicle data.
 
 ### 2.5 Load Vehicle Data
 
 Now we load 50,000 vehicles in a single query using `LATERAL FLATTEN`:
 
 ```sql
--- Load vehicles data (50,000 records in parallel API calls)
 INSERT INTO PON_EV_LAB.RAW.VEHICLES_RAW 
     (kenteken, datum_eerste_tenaamstelling_in_nederland, merk, handelsbenaming, voertuigsoort, raw_json)
 WITH offsets AS (
-    -- Generate 50 offset values: 0, 1000, 2000, ..., 49000
     SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
     FROM TABLE(GENERATOR(ROWCOUNT => 50))
 ),
 api_data AS (
-    -- Call the API for each offset (parallel execution!)
     SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val) AS data
     FROM offsets
 )
--- Flatten the JSON arrays and extract fields
 SELECT 
     f.value:kenteken::STRING,
     f.value:datum_eerste_tenaamstelling_in_nederland::STRING,
@@ -279,12 +252,11 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f;
 ```
 
-> 💡 **Performance Note:** This loads 50,000 records in seconds. The `LATERAL FLATTEN` pattern processes all API responses in parallel — no loops, no waiting.
+> 💡 **Performance Note:** This loads 50,000 records in seconds. The `LATERAL FLATTEN` pattern processes all API responses in parallel.
 
 ### 2.6 Load Fuel Type Data
 
 ```sql
--- Load fuel data (150,000 records to ensure good join coverage)
 INSERT INTO PON_EV_LAB.RAW.VEHICLES_FUEL_RAW (kenteken, brandstof_omschrijving, raw_json)
 WITH offsets AS (
     SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
@@ -304,7 +276,6 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 ### 2.7 Load Parking and Charging Data
 
 ```sql
--- Load parking locations (filter for type F = facility)
 INSERT INTO PON_EV_LAB.RAW.PARKING_ADDRESS_RAW 
     (areaid, areamanagerid, parkingaddresstype, zipcode, raw_json)
 WITH api_data AS (
@@ -319,7 +290,6 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f
 WHERE f.value:parkingaddresstype::STRING = 'F';
 
--- Load charging capacity data
 INSERT INTO PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW 
     (areaid, areamanagerid, chargingpointcapacity, raw_json)
 WITH api_data AS (
@@ -354,7 +324,7 @@ Expected: 50K+ vehicles, 150K+ fuel records, 3K+ parking, 3K+ charging.
 
 **Duration: 20 minutes**
 
-Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh — no Airflow, no Data Factory, no cron jobs.
+Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh. No Airflow, no Data Factory, no cron jobs.
 
 ### 3.1 Create the Curated Layer
 
@@ -375,7 +345,6 @@ SELECT
     v.voertuigsoort AS vehicle_type,
     f.brandstof_omschrijving AS fuel_type,
     
-    -- Classify fuel types into categories
     CASE 
         WHEN f.brandstof_omschrijving ILIKE '%elektr%' THEN 'Electric'
         WHEN f.brandstof_omschrijving ILIKE '%hybride%' THEN 'Hybrid'
@@ -386,7 +355,6 @@ SELECT
         ELSE 'Other'
     END AS fuel_category,
     
-    -- Flag for EV/Hybrid vehicles
     CASE 
         WHEN f.brandstof_omschrijving ILIKE '%elektr%' 
           OR f.brandstof_omschrijving ILIKE '%hybride%'
@@ -426,14 +394,13 @@ GROUP BY p.zipcode, LEFT(p.zipcode, 2);
 
 ### 3.3 Create Analytics Layer
 
-Now the business metrics — this answers the key question!
+Now the business metrics. This answers the key question:
 
 ```sql
--- EV growth trends by year and fuel type
 CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS
     TARGET_LAG = '1 hour'
     WAREHOUSE = COMPUTE_WH
-    COMMENT = 'EV registration trends by year - answers the core business question'
+    COMMENT = 'EV registration trends by year'
 AS
 SELECT 
     registration_year,
@@ -448,7 +415,6 @@ WHERE registration_year IS NOT NULL
 GROUP BY registration_year, fuel_category
 ORDER BY registration_year, fuel_category;
 
--- Year-over-year EV growth calculation
 CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
     TARGET_LAG = '1 hour'
     WAREHOUSE = COMPUTE_WH
@@ -486,10 +452,8 @@ ORDER BY registration_year;
 Check the Dynamic Table status:
 
 ```sql
--- See all Dynamic Tables and their refresh status
 SHOW DYNAMIC TABLES IN DATABASE PON_EV_LAB;
 
--- Check when they last refreshed
 SELECT 
     name,
     target_lag,
@@ -507,7 +471,7 @@ Query your analytics:
 SELECT * FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH ORDER BY registration_year;
 ```
 
-You should see EV growth trends over the years!
+You should see EV growth trends over the years.
 
 ---
 
@@ -522,40 +486,37 @@ This module addresses two critical pain points: **slow queries** and **unpredict
 ### 4.1 Create a Multi-Cluster Warehouse
 
 ```sql
--- Create a warehouse that scales automatically for concurrent users
 CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
     WAREHOUSE_SIZE = 'SMALL'
-    AUTO_SUSPEND = 60                -- Suspend after 1 minute idle (saves cost!)
-    AUTO_RESUME = TRUE               -- Resume instantly when queries arrive
-    MIN_CLUSTER_COUNT = 1            -- Start with 1 cluster
-    MAX_CLUSTER_COUNT = 3            -- Scale to 3 for concurrent users
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    MIN_CLUSTER_COUNT = 1
+    MAX_CLUSTER_COUNT = 3
     SCALING_POLICY = 'STANDARD'
     INITIALLY_SUSPENDED = TRUE
-    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics - auto-scales for concurrent users';
+    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
 ```
 
 > 💡 **vs. Databricks:** You'd manually configure autoscaling ranges and wait 2-5 minutes for cluster spin-up.
 > 
-> 💡 **vs. Fabric:** Capacity units are shared across the workspace — heavy users affect everyone.
+> 💡 **vs. Fabric:** Capacity units are shared across the workspace. Heavy users affect everyone.
 
 ### 4.2 Create a Resource Monitor
 
 Prevent runaway costs with automatic guardrails:
 
 ```sql
--- Create a resource monitor with spending limits
 CREATE OR REPLACE RESOURCE MONITOR PON_LAB_MONITOR
-    WITH CREDIT_QUOTA = 100          -- 100 credit monthly limit
+    WITH CREDIT_QUOTA = 100
     FREQUENCY = MONTHLY
     START_TIMESTAMP = IMMEDIATELY
     TRIGGERS
-        ON 50 PERCENT DO NOTIFY      -- Email alert at 50%
-        ON 75 PERCENT DO NOTIFY      -- Email alert at 75%
-        ON 90 PERCENT DO NOTIFY      -- Email alert at 90%
-        ON 100 PERCENT DO SUSPEND    -- Suspend warehouse at 100%
-        ON 110 PERCENT DO SUSPEND_IMMEDIATE;  -- Hard stop at 110%
+        ON 50 PERCENT DO NOTIFY
+        ON 75 PERCENT DO NOTIFY
+        ON 90 PERCENT DO NOTIFY
+        ON 100 PERCENT DO SUSPEND
+        ON 110 PERCENT DO SUSPEND_IMMEDIATE;
 
--- Assign the monitor to our warehouse
 ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
 ```
 
@@ -564,10 +525,8 @@ ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
 Run this to see instant query execution:
 
 ```sql
--- Use our new warehouse
 USE WAREHOUSE PON_ANALYTICS_WH;
 
--- Time these queries (should be sub-second)
 SELECT 'Query 1: Count all vehicles' AS test, COUNT(*) AS result 
 FROM PON_EV_LAB.RAW.VEHICLES_RAW;
 
@@ -582,10 +541,7 @@ GROUP BY fuel_category;
 ### 4.4 View Warehouse Status
 
 ```sql
--- Check warehouse status and scaling
 SHOW WAREHOUSES LIKE 'PON_ANALYTICS_WH';
-
--- View resource monitor status
 SHOW RESOURCE MONITORS LIKE 'PON_LAB_MONITOR';
 ```
 
@@ -604,12 +560,11 @@ Your warehouse should show:
 
 **Duration: 15 minutes**
 
-This is Snowflake's **killer feature** — share live data with external organizations without copying data, without ETL pipelines, with instant access control.
+This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
 
 ### 5.1 Create a Data Share
 
 ```sql
--- Create a share for Pon's dealer network
 CREATE OR REPLACE SHARE PON_DEALER_SHARE
     COMMENT = 'EV analytics data for Pon dealer network - live data, no copies';
 ```
@@ -617,11 +572,9 @@ CREATE OR REPLACE SHARE PON_DEALER_SHARE
 ### 5.2 Grant Access to Objects
 
 ```sql
--- Grant access to the database and schema
 GRANT USAGE ON DATABASE PON_EV_LAB TO SHARE PON_DEALER_SHARE;
 GRANT USAGE ON SCHEMA PON_EV_LAB.ANALYTICS TO SHARE PON_DEALER_SHARE;
 
--- Share the analytics tables (read-only)
 GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_DEALER_SHARE;
 GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHARE;
 ```
@@ -629,10 +582,7 @@ GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHA
 ### 5.3 View the Share
 
 ```sql
--- See what's being shared
 SHOW SHARES LIKE 'PON_DEALER_SHARE';
-
--- See granted privileges
 SHOW GRANTS TO SHARE PON_DEALER_SHARE;
 ```
 
@@ -651,10 +601,8 @@ SHOW GRANTS TO SHARE PON_DEALER_SHARE;
 When you add a dealer's Snowflake account to this share, they would run:
 
 ```sql
--- On the dealer's Snowflake account
 CREATE DATABASE PON_EV_DATA FROM SHARE <your_account>.PON_DEALER_SHARE;
 
--- They can now query YOUR live data
 SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS;
 ```
 
@@ -670,7 +618,7 @@ SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS;
 
 **Duration: 15 minutes**
 
-Build an interactive dashboard directly in Snowflake — no external hosting, no separate deployment.
+Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment.
 
 ### 6.1 Create the Streamlit App
 
@@ -789,7 +737,7 @@ st.caption("Database: PON_EV_LAB | Warehouse: PON_ANALYTICS_WH | Share: PON_DEAL
 
 ### 6.3 Run the App
 
-Click **Run** in the top-right corner. Your dashboard is now live!
+Click **Run** in the top-right corner. Your dashboard is now live.
 
 ### ✅ Checkpoint
 
@@ -818,7 +766,7 @@ You should see an interactive dashboard with:
 | Data Sharing | Secure Shares | Live data, no copies |
 | Dashboard | Streamlit in Snowflake | No separate hosting |
 
-### Key Differentiators vs. Competition
+### Key Differentiators
 
 **vs. Databricks:**
 - No cluster management or spin-up time
@@ -854,10 +802,10 @@ PON_DEALER_SHARE (Data Share)
 
 ### Next Steps
 
-1. **Load more data** — Increase API offsets to get fuller dataset
-2. **Add regional analysis** — Join with postal code regions
-3. **Schedule refreshes** — Adjust Dynamic Table lag for production
-4. **Add dealers to share** — Provide real dealer Snowflake accounts
+1. **Load more data**: Increase API offsets to get fuller dataset
+2. **Add regional analysis**: Join with postal code regions
+3. **Schedule refreshes**: Adjust Dynamic Table lag for production
+4. **Add dealers to share**: Provide real dealer Snowflake accounts
 
 ---
 
@@ -868,7 +816,6 @@ PON_DEALER_SHARE (Data Share)
 If you want to remove all lab resources:
 
 ```sql
--- WARNING: This deletes everything!
 DROP DATABASE IF EXISTS PON_EV_LAB;
 DROP WAREHOUSE IF EXISTS PON_ANALYTICS_WH;
 DROP RESOURCE MONITOR IF EXISTS PON_LAB_MONITOR;
@@ -883,5 +830,3 @@ DROP NETWORK RULE IF EXISTS rdw_api_rule;
   <img src="https://img.shields.io/badge/Built_for-Pon_Automotive-FF6B00?style=flat-square" alt="Built for Pon Automotive">
   <img src="https://img.shields.io/badge/Powered_by-Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white" alt="Powered by Snowflake">
 </p>
-
-

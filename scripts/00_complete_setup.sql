@@ -215,6 +215,19 @@ JOIN RAW.CHARGING_CAPACITY_RAW c ON p.RAW_JSON:parkingaddressreference::STRING =
 WHERE p.parkingaddresstype = 'F' AND p.zipcode IS NOT NULL AND p.zipcode != '' AND TRY_CAST(c.chargingpointcapacity AS INT) > 0
 GROUP BY LEFT(p.zipcode, 4);
 
+-- Brandstof per Postcode (Target Model from PDF DOEL)
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.BRANDSTOF_PER_POSTCODE TARGET_LAG = '1 hour' WAREHOUSE = PON_ANALYTICS_WH AS
+SELECT LEFT(postcode, 4) AS postcode,
+    CASE 
+        WHEN brandstof = 'E' THEN 'Elektrisch'
+        WHEN brandstof = 'B' THEN 'Benzine'
+        WHEN brandstof = 'D' THEN 'Diesel'
+        WHEN extern_oplaadbaar = 'J' THEN 'Hybride'
+        ELSE 'Overig'
+    END AS brandstof,
+    SUM(aantal) AS aantal
+FROM RAW.VEHICLES_BY_POSTCODE_RAW WHERE voertuigsoort = 'Personenauto' AND postcode IS NOT NULL GROUP BY 1, 2;
+
 -- =============================================================================
 -- MODULE 4: Cost Control
 -- =============================================================================

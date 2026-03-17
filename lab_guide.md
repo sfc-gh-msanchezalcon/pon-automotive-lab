@@ -542,9 +542,9 @@ SHOW DYNAMIC TABLES IN DATABASE PON_EV_LAB;
 SELECT * FROM PON_EV_LAB.CURATED.EV_BY_REGION 
 ORDER BY ev_percentage DESC LIMIT 10;
 
--- Infrastructure correlation
+-- Infrastructure correlation (EVs vs Laadpalen - answers PDF question)
 SELECT * FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
-ORDER BY evs_per_parking_location DESC LIMIT 10;
+ORDER BY evs_per_charging_point DESC LIMIT 10;
 
 -- Charging points by postal code (target model from PDF)
 SELECT * FROM PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
@@ -556,7 +556,7 @@ ORDER BY aantal DESC LIMIT 10;
 You should see:
 - 4+ Dynamic Tables in CURATED and ANALYTICS schemas
 - EV_BY_REGION showing ~90 postal areas with EV percentages
-- EV_INFRASTRUCTURE_CORRELATION showing EVs per parking location
+- EV_INFRASTRUCTURE_CORRELATION showing EVs per charging point (laadpalen)
 - LAADPALEN_PER_POSTCODE showing charging points by 4-digit postal code
 
 > **Stop and count:** How many DAG definitions did we write? How many trigger configurations? How many monitoring dashboards did we set up? Zero. The pipeline just works.

@@ -248,6 +248,32 @@ WHERE p.parkingaddresstype = 'F'
 GROUP BY LEFT(p.zipcode, 4);
 
 -- =============================================================================
+-- TARGET MODEL: Brandstof per Postcode (from PDF DOEL requirements)
+-- =============================================================================
+-- Answers: "What is the fuel distribution by region?"
+-- Source: RDW dataset 8wbe-pu7d (Voertuigen per postcode)
+
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.BRANDSTOF_PER_POSTCODE
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Fuel type per postal code - matches PDF DOEL (Postcode, Brandstof, Aantal)'
+AS
+SELECT 
+    LEFT(postcode, 4) AS postcode,
+    CASE 
+        WHEN brandstof = 'E' THEN 'Elektrisch'
+        WHEN brandstof = 'B' THEN 'Benzine'
+        WHEN brandstof = 'D' THEN 'Diesel'
+        WHEN extern_oplaadbaar = 'J' THEN 'Hybride'
+        ELSE 'Overig'
+    END AS brandstof,
+    SUM(aantal) AS aantal
+FROM RAW.VEHICLES_BY_POSTCODE_RAW
+WHERE voertuigsoort = 'Personenauto'
+  AND postcode IS NOT NULL
+GROUP BY 1, 2;
+
+-- =============================================================================
 -- Verify Dynamic Tables
 -- =============================================================================
 
@@ -259,12 +285,17 @@ ALTER DYNAMIC TABLE CURATED.CHARGING_BY_AREA REFRESH;
 ALTER DYNAMIC TABLE CURATED.VEHICLES_WITH_FUEL REFRESH;
 ALTER DYNAMIC TABLE ANALYTICS.NATIONAL_EV_SUMMARY REFRESH;
 ALTER DYNAMIC TABLE ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM REFRESH;
+ALTER DYNAMIC TABLE ANALYTICS.BRANDSTOF_PER_POSTCODE REFRESH;
 ALTER DYNAMIC TABLE ANALYTICS.LAADPALEN_PER_POSTCODE REFRESH;
+ALTER DYNAMIC TABLE ANALYTICS.EV_INFRASTRUCTURE_CORRELATION REFRESH;
 
 -- Query the key results
 SELECT * FROM CURATED.EV_BY_REGION ORDER BY ev_percentage DESC LIMIT 10;
 SELECT * FROM ANALYTICS.NATIONAL_EV_SUMMARY;
 
 -- Query the PDF target model tables
-SELECT * FROM ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM ORDER BY datum DESC LIMIT 20;
+SELECT * FROM ANALYTICS.BRANDSTOF_PER_POSTCODE ORDER BY postcode LIMIT 20;
 SELECT * FROM ANALYTICS.LAADPALEN_PER_POSTCODE ORDER BY aantal DESC LIMIT 10;
+
+-- Query the key correlation (answers PDF business question)
+SELECT * FROM ANALYTICS.EV_INFRASTRUCTURE_CORRELATION ORDER BY evs_per_charging_point DESC LIMIT 10;

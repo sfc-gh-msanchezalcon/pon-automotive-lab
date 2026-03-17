@@ -164,18 +164,18 @@ with tab2:
     
     with col1:
         df_corr = session.sql("""
-            SELECT postal_area, electric_vehicles, parking_locations, ev_percentage, evs_per_parking_location
+            SELECT postal_area, electric_vehicles, charging_points, ev_percentage, evs_per_charging_point
             FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
-            WHERE parking_locations > 0
+            WHERE charging_points > 0
             ORDER BY electric_vehicles DESC
             LIMIT 15
         """).to_pandas()
         
         df_corr['Region'] = df_corr['POSTAL_AREA'].apply(get_region_name)
         
-        st.markdown("**EVs vs Parking Locations by Region**")
-        chart_data = df_corr[['Region', 'ELECTRIC_VEHICLES', 'PARKING_LOCATIONS']].copy()
-        chart_data.columns = ['Region', 'Electric Vehicles (÷100)', 'Parking Locations']
+        st.markdown("**EVs vs Charging Points (Laadpalen) by Region**")
+        chart_data = df_corr[['Region', 'ELECTRIC_VEHICLES', 'CHARGING_POINTS']].copy()
+        chart_data.columns = ['Region', 'Electric Vehicles (÷100)', 'Charging Points']
         chart_data['Electric Vehicles (÷100)'] = chart_data['Electric Vehicles (÷100)'] / 100
         st.bar_chart(chart_data.set_index('Region'))
         st.caption("Note: EV count divided by 100 for scale comparison")
@@ -183,24 +183,24 @@ with tab2:
     with col2:
         st.markdown('<p class="section-header">Key Findings</p>', unsafe_allow_html=True)
         
-        avg_evs_per_loc = df_corr['EVS_PER_PARKING_LOCATION'].mean()
-        max_row = df_corr.loc[df_corr['EVS_PER_PARKING_LOCATION'].idxmax()]
-        min_row = df_corr.loc[df_corr['EVS_PER_PARKING_LOCATION'].idxmin()]
+        avg_evs_per_cp = df_corr['EVS_PER_CHARGING_POINT'].mean()
+        max_row = df_corr.loc[df_corr['EVS_PER_CHARGING_POINT'].idxmax()]
+        min_row = df_corr.loc[df_corr['EVS_PER_CHARGING_POINT'].idxmin()]
         
-        st.metric("Avg EVs per Location", f"{avg_evs_per_loc:,.0f}")
-        st.metric("Most Underserved", f"{get_region_name(max_row['POSTAL_AREA'])}", f"{max_row['EVS_PER_PARKING_LOCATION']:,.0f} EVs/location")
-        st.metric("Best Served", f"{get_region_name(min_row['POSTAL_AREA'])}", f"{min_row['EVS_PER_PARKING_LOCATION']:,.0f} EVs/location")
+        st.metric("Avg EVs per Charging Point", f"{avg_evs_per_cp:,.0f}")
+        st.metric("Most Underserved", f"{get_region_name(max_row['POSTAL_AREA'])}", f"{max_row['EVS_PER_CHARGING_POINT']:,.0f} EVs/charger")
+        st.metric("Best Served", f"{get_region_name(min_row['POSTAL_AREA'])}", f"{min_row['EVS_PER_CHARGING_POINT']:,.0f} EVs/charger")
         
         st.markdown("---")
-        st.warning(f"⚠️ **Infrastructure Gap:** {get_region_name(max_row['POSTAL_AREA'])} has {max_row['ELECTRIC_VEHICLES']:,} EVs but only {max_row['PARKING_LOCATIONS']} parking locations — potential expansion opportunity")
+        st.warning(f"⚠️ **Infrastructure Gap:** {get_region_name(max_row['POSTAL_AREA'])} has {max_row['ELECTRIC_VEHICLES']:,} EVs but only {max_row['CHARGING_POINTS']} charging points — potential expansion opportunity")
     
     st.markdown("---")
     
     st.success(f"""
-    **📊 Answer to the Business Question:**
+    **📊 Answer to the Business Question (PDF: "zie je dat terug in aantal beschikbare laadpalen?"):**
     
     **{get_region_name(df_corr.iloc[0]['POSTAL_AREA'])}** leads with **{df_corr.iloc[0]['ELECTRIC_VEHICLES']:,}** EVs and **{df_corr.iloc[0]['EV_PERCENTAGE']}%** adoption rate.
-    However, **{get_region_name(max_row['POSTAL_AREA'])}** shows the biggest infrastructure gap with **{int(max_row['EVS_PER_PARKING_LOCATION']):,}** EVs per parking location — 
+    However, **{get_region_name(max_row['POSTAL_AREA'])}** shows the biggest infrastructure gap with **{int(max_row['EVS_PER_CHARGING_POINT']):,}** EVs per charging point — 
     a clear opportunity for charging network expansion.
     """)
     
@@ -211,20 +211,20 @@ with tab2:
         SELECT 
             postal_area,
             electric_vehicles,
-            parking_locations,
+            charging_points,
             ev_percentage,
-            evs_per_parking_location
+            evs_per_charging_point
         FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
-        WHERE parking_locations > 0
-        ORDER BY evs_per_parking_location DESC
+        WHERE charging_points > 0
+        ORDER BY evs_per_charging_point DESC
         LIMIT 10
     """).to_pandas()
     
     df_table['Region'] = df_table['POSTAL_AREA'].apply(get_region_name)
-    df_table = df_table[['Region', 'ELECTRIC_VEHICLES', 'PARKING_LOCATIONS', 'EV_PERCENTAGE', 'EVS_PER_PARKING_LOCATION']]
-    df_table.columns = ['Region', 'EVs', 'Parking Locations', 'EV %', 'EVs per Location']
+    df_table = df_table[['Region', 'ELECTRIC_VEHICLES', 'CHARGING_POINTS', 'EV_PERCENTAGE', 'EVS_PER_CHARGING_POINT']]
+    df_table.columns = ['Region', 'EVs', 'Charging Points', 'EV %', 'EVs per Charger']
     st.dataframe(df_table, use_container_width=True)
-    st.caption("Sorted by EVs per Location (higher = more infrastructure needed)")
+    st.caption("Sorted by EVs per Charging Point (higher = more infrastructure needed)")
 
 # ============ TAB 3: TRENDS & INSIGHTS ============
 with tab3:
@@ -293,10 +293,10 @@ with tab3:
     
     # Get infrastructure gap
     infra_gap = session.sql("""
-        SELECT postal_area, electric_vehicles, parking_locations, evs_per_parking_location
+        SELECT postal_area, electric_vehicles, charging_points, evs_per_charging_point
         FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
-        WHERE parking_locations > 0
-        ORDER BY evs_per_parking_location DESC LIMIT 1
+        WHERE charging_points > 0
+        ORDER BY evs_per_charging_point DESC LIMIT 1
     """).collect()[0]
     
     col1, col2, col3 = st.columns(3)
@@ -321,7 +321,7 @@ with tab3:
         st.warning(f"""
         **⚠️ Infrastructure Gap: {gap_region}**
         
-        **{int(infra_gap['EVS_PER_PARKING_LOCATION']):,}** EVs per parking location — highest demand for charging expansion.
+        **{int(infra_gap['EVS_PER_CHARGING_POINT']):,}** EVs per charging point — highest demand for charging expansion.
         """)
 
 # ============ TAB 4: FUEL MIX ============

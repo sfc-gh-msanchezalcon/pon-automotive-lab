@@ -194,6 +194,53 @@ LEFT JOIN (
 WHERE e.total_vehicles > 5000;
 
 -- =============================================================================
+-- TARGET MODEL: Brandstof per Postcode per Datum (from PDF requirements)
+-- =============================================================================
+-- Answers: "How has EV adoption evolved over time by region?"
+-- Source: m9d7-ebf2 (vehicle registrations) + 8ys7-d773 (fuel types)
+
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Fuel type registrations by month - matches PDF target model'
+AS
+SELECT 
+    DATE_TRUNC('month', TRY_TO_DATE(v.datum_eerste_tenaamstelling_in_nederland, 'YYYYMMDD')) AS datum,
+    CASE 
+        WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch') THEN 'Elektrisch'
+        WHEN LOWER(f.brandstof_omschrijving) LIKE '%hybride%' THEN 'Hybride'
+        WHEN LOWER(f.brandstof_omschrijving) = 'benzine' THEN 'Benzine'
+        WHEN LOWER(f.brandstof_omschrijving) = 'diesel' THEN 'Diesel'
+        ELSE 'Overig'
+    END AS brandstof,
+    COUNT(*) AS aantal
+FROM RAW.VEHICLES_RAW v
+JOIN RAW.VEHICLES_FUEL_RAW f ON v.kenteken = f.kenteken
+WHERE v.datum_eerste_tenaamstelling_in_nederland IS NOT NULL
+  AND TRY_TO_DATE(v.datum_eerste_tenaamstelling_in_nederland, 'YYYYMMDD') >= '2015-01-01'
+GROUP BY 1, 2;
+
+-- =============================================================================
+-- TARGET MODEL: Laadpalen per Postcode (from PDF requirements)
+-- =============================================================================
+-- Answers: "Where is charging infrastructure concentrated?"
+-- Source: ygq4-hh5q (parking) + b3us-f26s (charging capacity)
+
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.LAADPALEN_PER_POSTCODE
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Charging points by postal area - matches PDF target model'
+AS
+SELECT 
+    LEFT(p.zipcode, 2) AS postcode,
+    SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
+FROM RAW.PARKING_ADDRESS_RAW p
+JOIN RAW.CHARGING_CAPACITY_RAW c 
+    ON p.areaid = c.areaid AND p.areamanagerid = c.areamanagerid
+WHERE p.zipcode IS NOT NULL
+GROUP BY LEFT(p.zipcode, 2);
+
+-- =============================================================================
 -- Verify Dynamic Tables
 -- =============================================================================
 
@@ -204,7 +251,13 @@ ALTER DYNAMIC TABLE CURATED.EV_BY_REGION REFRESH;
 ALTER DYNAMIC TABLE CURATED.CHARGING_BY_AREA REFRESH;
 ALTER DYNAMIC TABLE CURATED.VEHICLES_WITH_FUEL REFRESH;
 ALTER DYNAMIC TABLE ANALYTICS.NATIONAL_EV_SUMMARY REFRESH;
+ALTER DYNAMIC TABLE ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM REFRESH;
+ALTER DYNAMIC TABLE ANALYTICS.LAADPALEN_PER_POSTCODE REFRESH;
 
 -- Query the key results
 SELECT * FROM CURATED.EV_BY_REGION ORDER BY ev_percentage DESC LIMIT 10;
 SELECT * FROM ANALYTICS.NATIONAL_EV_SUMMARY;
+
+-- Query the PDF target model tables
+SELECT * FROM ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM ORDER BY datum DESC LIMIT 20;
+SELECT * FROM ANALYTICS.LAADPALEN_PER_POSTCODE ORDER BY aantal DESC LIMIT 10;

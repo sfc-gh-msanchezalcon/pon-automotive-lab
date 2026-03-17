@@ -133,7 +133,8 @@ Pon's pain points and how Snowflake addresses them:
 |----------------|------------|-------------------|
 | **Business Question**: "Which region has fastest EV growth and does it correlate with charging?" | Module 7 | Dashboard Tab 2 shows EV adoption vs charging infrastructure by region with explicit answer |
 | **RDW Open Data APIs** with pagination (1000 row limit) | Module 2 | Python UDF with External Access handles `$limit` and `$offset` pattern |
-| **Voertuigen met brandstof per postcode** dataset | Module 2 | Ingested via `8wbe-pu7d` API into `VEHICLES_BY_POSTCODE_RAW` |
+| **Target Model: brandst per postcode per datum** | Module 3 | Dynamic Table `BRANDSTOF_PER_POSTCODE_DATUM` with Postcode, Datum, Brandstof, Aantal |
+| **Target Model: Laadpalen per postcode** | Module 3 | Dynamic Table `LAADPALEN_PER_POSTCODE` with Postcode, Aantal |
 | **RAW → CURATED → ANALYTICS** pipeline | Module 3 | Three-schema medallion architecture with Dynamic Tables |
 | **No manual orchestration** | Module 3 | Dynamic Tables with `TARGET_LAG` — no external scheduler needed |
 | **Cost control and scaling** | Module 4 | Multi-cluster warehouse + Resource Monitor with hard limits |
@@ -154,16 +155,17 @@ Pon's pain points and how Snowflake addresses them:
 | **Snowflake Marketplace** | Instant access to third-party data | 6 |
 | **Streamlit in Snowflake** | Native dashboards, no external hosting | 7 |
 
-## Data Sources
+## Data Sources (per PDF Requirements)
 
 All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic data:
 
-| Dataset | RDW ID | Description | Records |
-|---------|--------|-------------|---------|
-| Voertuigen per Postcode | `8wbe-pu7d` | Vehicles by postal code (KEY) | 46,645 |
-| Laadpalen Capaciteit | `b3us-f26s` | Charging infrastructure | 3,139 |
-| Brandstof | `8ys7-d773` | Fuel types per vehicle | 150,000 |
-| Parkeeradres | `ygq4-hh5q` | Parking locations | 3,382 |
+| Dataset | RDW ID | Required Columns (PDF) | Records |
+|---------|--------|------------------------|---------|
+| **Gekentekende_voertuigen** | `m9d7-ebf2` | Kenteken, datum_eerste_tenaamstelling | 50,000 |
+| **Gekentekende_voertuigen_brandstof** | `8ys7-d773` | Kenteken, brandstof_omschrijving | 150,000 |
+| **Voertuigen per postcode** | `8wbe-pu7d` | Postcode, Brandstof, Aantal | 46,645 |
+| **Parkeeradres** | `ygq4-hh5q` | zipcode (filter: parkingaddresstype='F') | 3,382 |
+| **SPECIFICATIES PARKEERGEBIED** | `b3us-f26s` | areamanagerid, areaid, chargingpointcapacity | 3,139 |
 
 ## Prerequisites
 

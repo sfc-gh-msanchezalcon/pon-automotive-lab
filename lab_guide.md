@@ -117,7 +117,17 @@ CREATE SCHEMA IF NOT EXISTS ANALYTICS
 ```sql
 USE SCHEMA RAW;
 
--- KEY dataset: Vehicles aggregated by postal code and fuel type
+-- Individual vehicle registrations (for time-series analysis)
+CREATE TABLE IF NOT EXISTS VEHICLES_RAW (
+    kenteken STRING COMMENT 'License plate number (primary key)',
+    datum_eerste_tenaamstelling_in_nederland STRING COMMENT 'First registration date (YYYYMMDD)',
+    merk STRING COMMENT 'Vehicle brand (e.g., VOLKSWAGEN, TESLA)',
+    handelsbenaming STRING COMMENT 'Commercial model name',
+    voertuigsoort STRING COMMENT 'Vehicle type',
+    raw_json VARIANT COMMENT 'Complete JSON record from API'
+);
+
+-- Vehicles aggregated by postal code and fuel type (regional snapshot)
 CREATE TABLE IF NOT EXISTS VEHICLES_BY_POSTCODE_RAW (
     postcode STRING COMMENT '4-digit postal code',
     voertuigsoort STRING COMMENT 'Vehicle type (Personenauto = passenger car)',
@@ -163,7 +173,9 @@ SHOW SCHEMAS IN DATABASE PON_EV_LAB;
 SHOW TABLES IN SCHEMA PON_EV_LAB.RAW;
 ```
 
-You should see 3 schemas and 4 tables.
+You should see 3 schemas and 5 tables.
+
+> **Stop and notice:** How much cluster configuration have we done so far? None. The compute is serverless — it just works.
 
 ---
 
@@ -273,7 +285,32 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 
 > **What is GENERATOR?** Creates a virtual table with the specified number of rows. Combined with ROW_NUMBER, we generate offset values (0, 1000, 2000...) for API pagination.
 
-### 2.6 Load Fuel Type Data
+### 2.6 Load Vehicle Registrations (for time-series)
+
+This dataset has registration dates, enabling us to analyze EV growth over time:
+
+```sql
+INSERT INTO PON_EV_LAB.RAW.VEHICLES_RAW 
+    (kenteken, datum_eerste_tenaamstelling_in_nederland, merk, handelsbenaming, voertuigsoort, raw_json)
+WITH offsets AS (
+    SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
+    FROM TABLE(GENERATOR(ROWCOUNT => 50))
+),
+api_data AS (
+    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val) AS data
+    FROM offsets
+)
+SELECT 
+    f.value:kenteken::STRING,
+    f.value:datum_eerste_tenaamstelling_in_nederland::STRING,
+    f.value:merk::STRING,
+    f.value:handelsbenaming::STRING,
+    f.value:voertuigsoort::STRING,
+    f.value
+FROM api_data, LATERAL FLATTEN(input => data) f;
+```
+
+### 2.7 Load Fuel Type Data
 
 ```sql
 INSERT INTO PON_EV_LAB.RAW.VEHICLES_FUEL_RAW (kenteken, brandstof_omschrijving, raw_json)
@@ -292,7 +329,7 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f;
 ```
 
-### 2.7 Load Parking and Charging Data
+### 2.8 Load Parking and Charging Data
 
 ```sql
 INSERT INTO PON_EV_LAB.RAW.PARKING_ADDRESS_RAW 
@@ -327,13 +364,14 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 Verify your data load:
 
 ```sql
-SELECT 'VEHICLES_BY_POSTCODE_RAW' AS table_name, COUNT(*) AS row_count FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+SELECT 'VEHICLES_RAW' AS table_name, COUNT(*) AS row_count FROM PON_EV_LAB.RAW.VEHICLES_RAW
+UNION ALL SELECT 'VEHICLES_BY_POSTCODE_RAW', COUNT(*) FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
 UNION ALL SELECT 'VEHICLES_FUEL_RAW', COUNT(*) FROM PON_EV_LAB.RAW.VEHICLES_FUEL_RAW
 UNION ALL SELECT 'PARKING_ADDRESS_RAW', COUNT(*) FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW
 UNION ALL SELECT 'CHARGING_CAPACITY_RAW', COUNT(*) FROM PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW;
 ```
 
-Expected: ~47K vehicles by postcode, 150K fuel records, 3K parking, 3K charging.
+Expected: ~50K vehicle registrations, ~47K vehicles by postcode, 150K fuel records, 3K parking, 3K charging.
 
 ### Scaling for Production (Facilitator Note)
 
@@ -372,6 +410,8 @@ CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
     AUTO_RESUME = TRUE
     COMMENT = 'Warehouse for Pon EV Analytics';
 ```
+
+> **Watch the bottom-right corner** when you run this. The warehouse is ready instantly — no cluster provisioning, no warmup time.
 
 ### 3.1 Create the KEY Dynamic Table: EV by Region
 
@@ -464,6 +504,8 @@ You should see:
 - EV_BY_REGION showing ~90 postal areas with EV percentages
 - EV_INFRASTRUCTURE_CORRELATION showing EVs per parking location
 
+> **Stop and count:** How many DAG definitions did we write? How many trigger configurations? How many monitoring dashboards did we set up? Zero. The pipeline just works.
+
 ---
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
@@ -505,6 +547,8 @@ CREATE OR REPLACE RESOURCE MONITOR PON_LAB_MONITOR
 
 ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
 ```
+
+> **This is a hard limit, not a dashboard.** When you hit 100%, the warehouse suspends. No surprises at end-of-month billing.
 
 ### 4.3 Demo: Performance Test
 

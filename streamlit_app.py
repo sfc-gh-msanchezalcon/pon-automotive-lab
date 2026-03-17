@@ -232,18 +232,30 @@ with tab3:
     
     with col1:
         st.markdown('<p class="section-header">EV Registrations Over Time</p>', unsafe_allow_html=True)
-        st.caption("Annual EV registrations from vehicle sample data")
+        st.caption("Monthly EV registrations from RDW vehicle data")
         
-        df_growth = session.sql("""
-            SELECT registration_year as "Year",
-                   ev_count as "EV Registrations",
-                   ev_share_percent as "EV Share %"
-            FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
-            WHERE registration_year >= 2015
-            ORDER BY registration_year
+        df_monthly = session.sql("""
+            SELECT datum as "Month",
+                   SUM(CASE WHEN brandstof = 'Elektrisch' THEN aantal ELSE 0 END) as "Electric",
+                   SUM(CASE WHEN brandstof = 'Hybride' THEN aantal ELSE 0 END) as "Hybrid"
+            FROM PON_EV_LAB.ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM
+            WHERE datum >= '2018-01-01'
+            GROUP BY datum
+            ORDER BY datum
         """).to_pandas()
         
-        st.bar_chart(df_growth.set_index('Year')['EV Registrations'])
+        if not df_monthly.empty:
+            st.line_chart(df_monthly.set_index('Month')[['Electric', 'Hybrid']])
+        else:
+            # Fallback to YOY growth if monthly not available
+            df_growth = session.sql("""
+                SELECT registration_year as "Year",
+                       ev_count as "EV Registrations"
+                FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
+                WHERE registration_year >= 2015
+                ORDER BY registration_year
+            """).to_pandas()
+            st.bar_chart(df_growth.set_index('Year')['EV Registrations'])
     
     with col2:
         st.markdown('<p class="section-header">Year-over-Year Growth</p>', unsafe_allow_html=True)

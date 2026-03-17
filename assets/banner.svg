@@ -1,0 +1,60 @@
+<svg width="900" height="200" viewBox="0 0 900 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF6B00;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#29B5E8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="url(#bgGrad)" rx="12"/>
+  
+  <!-- Accent bar -->
+  <rect x="0" y="0" width="100%" height="6" fill="url(#accentGrad)"/>
+  
+  <!-- Car silhouette (simplified EV) -->
+  <g transform="translate(50, 80)">
+    <!-- Body -->
+    <path d="M20,60 L30,30 L80,20 L160,20 L190,30 L200,60 L200,80 L10,80 L10,60 Z" 
+          fill="#29B5E8" opacity="0.9"/>
+    <!-- Windows -->
+    <path d="M35,35 L75,25 L155,25 L180,35 L150,35 L90,35 Z" 
+          fill="#1a1a2e" opacity="0.8"/>
+    <!-- Wheels -->
+    <circle cx="50" cy="80" r="18" fill="#1a1a2e"/>
+    <circle cx="50" cy="80" r="10" fill="#FF6B00"/>
+    <circle cx="170" cy="80" r="18" fill="#1a1a2e"/>
+    <circle cx="170" cy="80" r="10" fill="#FF6B00"/>
+    <!-- Charging port indicator -->
+    <rect x="175" y="40" width="8" height="12" rx="2" fill="#00ff88"/>
+  </g>
+  
+  <!-- Title -->
+  <text x="300" y="75" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="white">
+    Pon Automotive
+  </text>
+  <text x="300" y="115" font-family="Arial, sans-serif" font-size="24" fill="#29B5E8">
+    EV Transition Netherlands
+  </text>
+  <text x="300" y="150" font-family="Arial, sans-serif" font-size="16" fill="#888">
+    Hands-on Snowflake Data Engineering Lab
+  </text>
+  
+  <!-- Snowflake logo (simplified) -->
+  <g transform="translate(800, 100)">
+    <circle cx="0" cy="0" r="30" fill="none" stroke="#29B5E8" stroke-width="2"/>
+    <line x1="0" y1="-25" x2="0" y2="25" stroke="#29B5E8" stroke-width="3"/>
+    <line x1="-22" y1="-12" x2="22" y2="12" stroke="#29B5E8" stroke-width="3"/>
+    <line x1="-22" y1="12" x2="22" y2="-12" stroke="#29B5E8" stroke-width="3"/>
+    <circle cx="0" cy="-25" r="4" fill="#29B5E8"/>
+    <circle cx="0" cy="25" r="4" fill="#29B5E8"/>
+    <circle cx="-22" cy="-12" r="4" fill="#29B5E8"/>
+    <circle cx="22" cy="12" r="4" fill="#29B5E8"/>
+    <circle cx="-22" cy="12" r="4" fill="#29B5E8"/>
+    <circle cx="22" cy="-12" r="4" fill="#29B5E8"/>
+  </g>
+</svg>

@@ -1,0 +1,7 @@
+name: pon_ev_lab
+channels:
+  - snowflake
+dependencies:
+  - pandas
+  - streamlit
+  - snowflake-snowpark-python

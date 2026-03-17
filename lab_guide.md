@@ -53,11 +53,11 @@ In the top-right corner of Snowsight, click on your username and verify:
 - **Role:** ACCOUNTADMIN
 - **Warehouse:** Any available warehouse (we'll create a dedicated one)
 
-### 0.3 Open a SQL Worksheet
+### 0.3 Open a SQL Workspace
 
-1. Click **Projects** → **Worksheets** in the left navigation
-2. Click the **+** button → **SQL Worksheet**
-3. Name it: `Pon EV Lab`
+1. Click **Workspaces** in the left navigation
+2. Click **+ New Workspace** and name it `Pon EV Lab`
+3. Create a new SQL file to start writing queries
 
 You're ready to begin!
 

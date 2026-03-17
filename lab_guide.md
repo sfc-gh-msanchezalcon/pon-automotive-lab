@@ -37,9 +37,9 @@ This lab focuses on the **data engineering fundamentals** that matter most:
 |------|--------|----------------|
 | 1 | **Ingest** | Pull live data from government APIs |
 | 2 | **Transform** | Build automated pipelines with Dynamic Tables |
-| 3 | **Enrich** | Add third-party data from the Marketplace |
+| 3 | **Control** | Set cost guardrails and scaling policies |
 | 4 | **Share** | Publish live data to partners |
-| 5 | **Control** | Set cost guardrails and scaling policies |
+| 5 | **Enrich** | Add third-party data from the Marketplace |
 | 6 | **Visualize** | Build an interactive Streamlit dashboard |
 
 Let's get started.
@@ -488,17 +488,185 @@ You should see EV growth trends over the years.
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Module 4: Marketplace Data Enrichment
+## Module 4: Scaling & Cost Control
 
 **Duration: 15 minutes**
 
-Now that you've built your core pipeline with RDW data, let's enrich it with third-party data from the Snowflake Marketplace. This demonstrates how Snowflake enables a complete **data ecosystem**: you can both consume external data AND share your own.
+Before we share data externally, let's set up the operational guardrails. This module addresses two critical pain points: **slow queries** and **unpredictable costs**.
+
+### 4.1 Create a Multi-Cluster Warehouse
+
+```sql
+CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
+    WAREHOUSE_SIZE = 'SMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    MIN_CLUSTER_COUNT = 1
+    MAX_CLUSTER_COUNT = 3
+    SCALING_POLICY = 'STANDARD'
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
+```
+
+> **vs. Databricks:** You'd manually configure autoscaling ranges and wait 2-5 minutes for cluster spin-up.
+> 
+> **vs. Fabric:** Capacity units are shared across the workspace. Heavy users affect everyone.
+
+### 4.2 Create a Resource Monitor
+
+Prevent runaway costs with automatic guardrails:
+
+```sql
+CREATE OR REPLACE RESOURCE MONITOR PON_LAB_MONITOR
+    WITH CREDIT_QUOTA = 100
+    FREQUENCY = MONTHLY
+    START_TIMESTAMP = IMMEDIATELY
+    TRIGGERS
+        ON 50 PERCENT DO NOTIFY
+        ON 75 PERCENT DO NOTIFY
+        ON 90 PERCENT DO NOTIFY
+        ON 100 PERCENT DO SUSPEND
+        ON 110 PERCENT DO SUSPEND_IMMEDIATE;
+
+ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
+```
+
+### 4.3 Demo: Performance Test
+
+Run this to see instant query execution:
+
+```sql
+USE WAREHOUSE PON_ANALYTICS_WH;
+
+SELECT 'Query 1: Count all vehicles' AS test, COUNT(*) AS result 
+FROM PON_EV_LAB.RAW.VEHICLES_RAW;
+
+SELECT 'Query 2: Join performance' AS test, COUNT(*) AS result 
+FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL;
+
+SELECT 'Query 3: Aggregation' AS test, fuel_category, COUNT(*) AS result 
+FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+GROUP BY fuel_category;
+```
+
+### 4.4 View Warehouse Status
+
+```sql
+SHOW WAREHOUSES LIKE 'PON_ANALYTICS_WH';
+SHOW RESOURCE MONITORS LIKE 'PON_LAB_MONITOR';
+```
+
+### Checkpoint
+
+Your warehouse should show:
+- State: STARTED or SUSPENDED
+- Size: SMALL
+- Min/Max Clusters: 1/3
+
+---
+
+<p align="center"><img src="assets/divider.svg" width="80%"></p>
+
+## Module 5: Secure Data Sharing
+
+**Duration: 15 minutes**
+
+This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
+
+### 5.1 Create a Data Share
+
+```sql
+CREATE OR REPLACE SHARE PON_DEALER_SHARE
+    COMMENT = 'EV analytics data for Pon dealer network - live data, no copies';
+```
+
+### 5.2 Grant Access to Objects
+
+```sql
+GRANT USAGE ON DATABASE PON_EV_LAB TO SHARE PON_DEALER_SHARE;
+GRANT USAGE ON SCHEMA PON_EV_LAB.ANALYTICS TO SHARE PON_DEALER_SHARE;
+
+GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_DEALER_SHARE;
+GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHARE;
+```
+
+### 5.3 Verify the Share Contents
+
+```sql
+SHOW SHARES LIKE 'PON_DEALER_SHARE';
+
+DESCRIBE SHARE PON_DEALER_SHARE;
+```
+
+You should see:
+- `kind`: OUTBOUND
+- `database_name`: PON_EV_LAB
+- Objects: EV_GROWTH_TRENDS, EV_YOY_GROWTH
+
+### 5.4 View in Snowsight UI
+
+To see your share visually:
+
+1. Navigate to **Data Products** > **Private Sharing**
+2. Click the **Shared by My Account** tab
+3. You should see `PON_DEALER_SHARE` listed
+4. Click on it to see the shared objects and manage consumers
+
+### 5.5 Simulate Consumer Access (Optional)
+
+If you have access to a second Snowflake account, you can test the full flow:
+
+**On the Provider (your account):**
+```sql
+-- Add the consumer account (replace with actual account locator)
+ALTER SHARE PON_DEALER_SHARE ADD ACCOUNTS = '<consumer_account_locator>';
+
+-- Verify the consumer was added
+SHOW GRANTS OF SHARE PON_DEALER_SHARE;
+```
+
+**On the Consumer (second account):**
+```sql
+-- See available shares
+SHOW SHARES;
+
+-- Create a database from the share
+CREATE DATABASE PON_EV_DATA FROM SHARE <provider_account>.PON_DEALER_SHARE;
+
+-- Query the shared data (live, no copy!)
+SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS LIMIT 10;
+SELECT * FROM PON_EV_DATA.ANALYTICS.EV_YOY_GROWTH;
+```
+
+### Key Benefits for Pon
+
+| Benefit | Description |
+|---------|-------------|
+| **No Data Copies** | Dealers query live data directly |
+| **Instant Updates** | When you update data, dealers see it immediately |
+| **Revoke Instantly** | Remove access in seconds if needed |
+| **Full Audit Trail** | Know exactly who queried what and when |
+| **Cross-Cloud** | Works even if dealers are on different cloud providers |
+
+> **vs. Databricks:** Delta Sharing requires a separate setup, different protocol, and often involves data copies for cross-cloud scenarios.
+> 
+> **vs. Fabric:** No native cross-organization sharing capability.
+
+---
+
+<p align="center"><img src="assets/divider.svg" width="80%"></p>
+
+## Module 6: Marketplace Data Enrichment
+
+**Duration: 15 minutes**
+
+In the previous module, you shared YOUR data with partners. Now let's do the reverse: **consume external data** to enrich your analysis. Together, Data Sharing (data out) and Marketplace (data in) represent Snowflake's complete data collaboration story.
 
 ### Why Marketplace Matters
 
 Unlike Databricks or Fabric, Snowflake offers a **native data marketplace** with 2,500+ free and paid datasets. No ETL, no data movement, instant access.
 
-### 4.1 Get the Datasets
+### 6.1 Get the Datasets
 
 We'll use two free datasets that everyone can access:
 
@@ -517,9 +685,9 @@ We'll use two free datasets that everyone can access:
 
 Both datasets appear instantly, no ETL required.
 
-### 4.2 Example 1: Weather Impact on EV Range
+### 6.2 Example 1: Weather Impact on EV Range
 
-Cold weather reduces EV battery range by 20-40%. Let's correlate EV adoption with temperature:
+Cold weather reduces EV battery range by 20-40%. Let's explore weather data:
 
 ```sql
 -- Check what cities are available in the weather sample
@@ -542,7 +710,7 @@ ORDER BY year DESC, CITY_NAME;
 
 > **Insight for Pon:** Weather data helps predict seasonal demand. EVs sell better in spring/summer when range anxiety is lower.
 
-### 4.3 Example 2: Economic Indicators for Market Analysis
+### 6.3 Example 2: Economic Indicators for Market Analysis
 
 The Snowflake Public Data includes OECD economic indicators, World Bank data, and more:
 
@@ -572,7 +740,7 @@ ORDER BY DATE DESC
 LIMIT 10;
 ```
 
-### 4.4 Example 3: Energy Prices and Charging Costs
+### 6.4 Example 3: Energy Prices and Charging Costs
 
 Energy costs directly impact EV ownership economics:
 
@@ -600,7 +768,7 @@ LIMIT 20;
 
 > **Insight for Pon:** When electricity prices drop relative to petrol, EV adoption accelerates.
 
-### 4.5 Example 4: Climate Data for Sustainability Reporting
+### 6.5 Example 4: Climate Data for Sustainability Reporting
 
 Track greenhouse gas emissions for ESG reporting:
 
@@ -641,150 +809,11 @@ LIMIT 20;
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Module 5: Secure Data Sharing
-
-**Duration: 15 minutes**
-
-In the previous module, you consumed external data from the Marketplace. Now let's do the reverse: **share YOUR data with external partners**. This is Snowflake's killer feature: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
-
-Together, Marketplace (data in) and Data Sharing (data out) represent Snowflake's complete data collaboration story.
-
-### 5.1 Create a Data Share
-
-```sql
-CREATE OR REPLACE SHARE PON_DEALER_SHARE
-    COMMENT = 'EV analytics data for Pon dealer network - live data, no copies';
-```
-
-### 5.2 Grant Access to Objects
-
-```sql
-GRANT USAGE ON DATABASE PON_EV_LAB TO SHARE PON_DEALER_SHARE;
-GRANT USAGE ON SCHEMA PON_EV_LAB.ANALYTICS TO SHARE PON_DEALER_SHARE;
-
-GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_DEALER_SHARE;
-GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHARE;
-```
-
-### 5.3 View the Share
-
-```sql
-SHOW SHARES LIKE 'PON_DEALER_SHARE';
-SHOW GRANTS TO SHARE PON_DEALER_SHARE;
-```
-
-### Key Benefits for Pon
-
-| Benefit | Description |
-|---------|-------------|
-| **No Data Copies** | Dealers query live data directly |
-| **Instant Updates** | When you update data, dealers see it immediately |
-| **Revoke Instantly** | Remove access in seconds if needed |
-| **Full Audit Trail** | Know exactly who queried what and when |
-| **Cross-Cloud** | Works even if dealers are on different cloud providers |
-
-### How Dealers Would Access
-
-When you add a dealer's Snowflake account to this share, they would run:
-
-```sql
-CREATE DATABASE PON_EV_DATA FROM SHARE <your_account>.PON_DEALER_SHARE;
-
-SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS;
-```
-
-> **vs. Databricks:** Delta Sharing requires a separate setup, different protocol, and often involves data copies for cross-cloud scenarios.
-> 
-> **vs. Fabric:** No native cross-organization sharing capability.
-
----
-
-<p align="center"><img src="assets/divider.svg" width="80%"></p>
-
-## Module 6: Scaling & Cost Control
-
-**Duration: 15 minutes**
-
-This module addresses two critical pain points: **slow queries** and **unpredictable costs**.
-
-### 6.1 Create a Multi-Cluster Warehouse
-
-```sql
-CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
-    WAREHOUSE_SIZE = 'SMALL'
-    AUTO_SUSPEND = 60
-    AUTO_RESUME = TRUE
-    MIN_CLUSTER_COUNT = 1
-    MAX_CLUSTER_COUNT = 3
-    SCALING_POLICY = 'STANDARD'
-    INITIALLY_SUSPENDED = TRUE
-    COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
-```
-
-> **vs. Databricks:** You'd manually configure autoscaling ranges and wait 2-5 minutes for cluster spin-up.
-> 
-> **vs. Fabric:** Capacity units are shared across the workspace. Heavy users affect everyone.
-
-### 6.2 Create a Resource Monitor
-
-Prevent runaway costs with automatic guardrails:
-
-```sql
-CREATE OR REPLACE RESOURCE MONITOR PON_LAB_MONITOR
-    WITH CREDIT_QUOTA = 100
-    FREQUENCY = MONTHLY
-    START_TIMESTAMP = IMMEDIATELY
-    TRIGGERS
-        ON 50 PERCENT DO NOTIFY
-        ON 75 PERCENT DO NOTIFY
-        ON 90 PERCENT DO NOTIFY
-        ON 100 PERCENT DO SUSPEND
-        ON 110 PERCENT DO SUSPEND_IMMEDIATE;
-
-ALTER WAREHOUSE PON_ANALYTICS_WH SET RESOURCE_MONITOR = PON_LAB_MONITOR;
-```
-
-### 6.3 Demo: Performance Test
-
-Run this to see instant query execution:
-
-```sql
-USE WAREHOUSE PON_ANALYTICS_WH;
-
-SELECT 'Query 1: Count all vehicles' AS test, COUNT(*) AS result 
-FROM PON_EV_LAB.RAW.VEHICLES_RAW;
-
-SELECT 'Query 2: Join performance' AS test, COUNT(*) AS result 
-FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL;
-
-SELECT 'Query 3: Aggregation' AS test, fuel_category, COUNT(*) AS result 
-FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-GROUP BY fuel_category;
-```
-
-### 6.4 View Warehouse Status
-
-```sql
-SHOW WAREHOUSES LIKE 'PON_ANALYTICS_WH';
-SHOW RESOURCE MONITORS LIKE 'PON_LAB_MONITOR';
-```
-
-### Checkpoint
-
-Your warehouse should show:
-- State: STARTED or SUSPENDED
-- Size: SMALL
-- Min/Max Clusters: 1/3
-
----
-
-<p align="center"><img src="assets/divider.svg" width="80%"></p>
-
 ## Module 7: Streamlit Dashboard
 
 **Duration: 15 minutes**
 
-Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment.
+Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment. This is the visualization layer that brings everything together.
 
 ### 7.1 Create the Streamlit App
 
@@ -927,10 +956,10 @@ You should see an interactive dashboard with:
 |-----------|-------------------|---------|
 | API Ingestion | External Access + UDFs | No external tools needed |
 | Data Pipeline | Dynamic Tables | Zero orchestration |
-| Data Enrichment | Marketplace | Instant third-party data |
-| Data Sharing | Secure Shares | Live data, no copies |
 | Scaling | Multi-cluster Warehouse | Instant, automatic |
 | Cost Control | Resource Monitors | Predictable spend |
+| Data Sharing | Secure Shares | Live data, no copies |
+| Data Enrichment | Marketplace | Instant third-party data |
 | Dashboard | Streamlit in Snowflake | No separate hosting |
 
 ### Key Differentiators

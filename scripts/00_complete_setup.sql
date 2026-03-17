@@ -1,10 +1,17 @@
 /*
 =============================================================================
 PON AUTOMOTIVE - EV TRANSITION NETHERLANDS
-Complete Setup Script (All Modules)
+Complete Setup Script (Modules 1-5)
 =============================================================================
 This file contains all SQL from Modules 1-5 for facilitator use.
 Run this to set up the entire lab environment in one execution.
+
+NOTE: Module 6 (Marketplace) requires manual steps in Snowsight UI:
+  1. Navigate to Data Products > Marketplace
+  2. Search and get: "Global Weather & Climate Data for BI" (Weather Source)
+  3. Search and get: "Snowflake Public Data (Free)" (Snowflake)
+  
+NOTE: Module 7 (Streamlit) - Copy streamlit_app.py code into Snowsight
 =============================================================================
 */
 

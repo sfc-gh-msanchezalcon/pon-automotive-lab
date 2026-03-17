@@ -39,49 +39,56 @@ By the end you will have:
 ### Architecture
 
 ```
-                         SNOWFLAKE ACCOUNT
-    ┌──────────────────────────────────────────────────────────┐
-    │                                                          │
-    │   EXTERNAL                                               │
-    │   ┌─────────┐     ┌──────────────────────────────────┐  │
-    │   │ RDW     │     │           PON_EV_LAB             │  │
-    │   │ Open    │     │                                  │  │
-    │   │ Data    │────▶│  RAW          CURATED    ANALYTICS│  │
-    │   │ APIs    │     │  ┌─────┐     ┌─────┐    ┌─────┐ │  │
-    │   └─────────┘     │  │VEHIC│     │VEHIC│    │EV   │ │  │
-    │                   │  │LES  │────▶│LES_ │───▶│GROWT│ │  │
-    │   External        │  │     │     │WITH │    │H_   │ │  │
-    │   Access          │  │FUEL │     │FUEL │    │TREND│ │  │
-    │   Integration     │  │     │     │     │    │S    │ │  │
-    │                   │  │PARKI│     │CHARG│    │     │ │  │
-    │   Python UDF      │  │NG   │────▶│ING_ │    │YOY_ │ │  │
-    │   (paginated      │  │     │     │BY_  │    │GROWT│ │  │
-    │    fetch)         │  │CHARG│     │AREA │    │H    │ │  │
-    │                   │  │ING  │     │     │    │     │ │  │
-    │                   │  └─────┘     └─────┘    └──┬──┘ │  │
-    │                   │                           │     │  │
-    │                   │              DYNAMIC TABLES      │  │
-    │                   │            (auto-refresh!)       │  │
-    │                   └──────────────────────────────────┘  │
-    │                                      │                  │
-    │                    ┌─────────────────┴──────────────┐   │
-    │                    │                                │   │
-    │              ┌─────▼─────┐                ┌─────────▼─┐ │
-    │              │ STREAMLIT │                │   SECURE  │ │
-    │              │ DASHBOARD │                │   DATA    │ │
-    │              │           │                │   SHARE   │ │
-    │              │ EV Growth │                │           │ │
-    │              │ Fuel Mix  │                │ Dealers   │ │
-    │              │ Charging  │                │ Partners  │ │
-    │              │ Infra     │                │ OEMs      │ │
-    │              └───────────┘                └───────────┘ │
-    │                                                         │
-    │   ┌─────────────────────────────────────────────────┐   │
-    │   │ PON_ANALYTICS_WH                                │   │
-    │   │ • Multi-cluster (1-3)  • Auto-suspend 60s      │   │
-    │   │ • Resource Monitor     • Per-second billing    │   │
-    │   └─────────────────────────────────────────────────┘   │
-    └─────────────────────────────────────────────────────────┘
+                              SNOWFLAKE ACCOUNT
+    ┌────────────────────────────────────────────────────────────────────┐
+    │                                                                    │
+    │   EXTERNAL APIs                         MARKETPLACE               │
+    │   ┌─────────┐                          ┌─────────────┐            │
+    │   │ RDW     │                          │ Weather     │            │
+    │   │ Open    │                          │ Source      │            │
+    │   │ Data    │                          ├─────────────┤            │
+    │   └────┬────┘                          │ Snowflake   │            │
+    │        │                               │ Public Data │            │
+    │        │ External Access               └──────┬──────┘            │
+    │        │ Integration                          │ Zero-copy         │
+    │        ▼                                      ▼                   │
+    │   ┌────────────────────────────────────────────────────────────┐  │
+    │   │                        PON_EV_LAB                          │  │
+    │   │                                                            │  │
+    │   │   RAW               CURATED               ANALYTICS        │  │
+    │   │   ┌──────────┐      ┌──────────────┐     ┌─────────────┐  │  │
+    │   │   │VEHICLES  │      │VEHICLES_     │     │EV_GROWTH_   │  │  │
+    │   │   │_RAW      │─────▶│WITH_FUEL     │────▶│TRENDS       │  │  │
+    │   │   ├──────────┤      ├──────────────┤     ├─────────────┤  │  │
+    │   │   │FUEL_RAW  │      │CHARGING_     │     │EV_YOY_GROWTH│  │  │
+    │   │   ├──────────┤      │BY_AREA       │     └──────┬──────┘  │  │
+    │   │   │PARKING   │      └──────────────┘            │         │  │
+    │   │   │_RAW      │                                  │         │  │
+    │   │   ├──────────┤       DYNAMIC TABLES             │         │  │
+    │   │   │CHARGING  │       (auto-refresh)             │         │  │
+    │   │   │_RAW      │                                  │         │  │
+    │   │   └──────────┘                                  │         │  │
+    │   └─────────────────────────────────────────────────┼─────────┘  │
+    │                                                     │            │
+    │                  ┌──────────────────────────────────┼────────┐   │
+    │                  │                                  │        │   │
+    │            ┌─────▼─────┐                      ┌─────▼─────┐  │   │
+    │            │ STREAMLIT │                      │  SECURE   │  │   │
+    │            │ DASHBOARD │                      │  DATA     │  │   │
+    │            │           │                      │  SHARE    │  │   │
+    │            │ EV Growth │                      │           │  │   │
+    │            │ Fuel Mix  │                      │ Dealers   │  │   │
+    │            │ Charging  │                      │ Partners  │  │   │
+    │            │ Market    │                      │ OEMs      │  │   │
+    │            │ Insights  │                      │           │  │   │
+    │            └───────────┘                      └───────────┘  │   │
+    │                                                              │   │
+    │   ┌──────────────────────────────────────────────────────────┘   │
+    │   │ PON_ANALYTICS_WH                                             │
+    │   │ • Multi-cluster (1-3)  • Auto-suspend 60s                    │
+    │   │ • Resource Monitor     • Per-second billing                  │
+    │   └──────────────────────────────────────────────────────────────┘
+    └────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Why Snowflake?
@@ -119,7 +126,8 @@ Pon's pain points and how Snowflake addresses them:
 | **Multi-Cluster Warehouses** | Auto-scale for concurrent workloads | 4 |
 | **Resource Monitors** | Automatic cost control and alerts | 4 |
 | **Secure Data Sharing** | Zero-copy sharing across organizations | 5 |
-| **Streamlit in Snowflake** | Native dashboards, no external hosting | 6 |
+| **Snowflake Marketplace** | Instant access to third-party data | 6 |
+| **Streamlit in Snowflake** | Native dashboards, no external hosting | 7 |
 
 ## Data Sources
 
@@ -147,10 +155,11 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority), the same datase
 | 3 | Dynamic Tables Pipeline | 20 min |
 | 4 | Scaling & Cost Control | 15 min |
 | 5 | Secure Data Sharing | 15 min |
-| 6 | Streamlit Dashboard | 15 min |
-| 7 | Wrap-up & Discussion | 10 min |
+| 6 | Marketplace Data Enrichment | 15 min |
+| 7 | Streamlit Dashboard | 15 min |
+| 8 | Wrap-up & Discussion | 10 min |
 
-**Total: ~2 hours**
+**Total: ~2.5 hours**
 
 ## Getting Started
 
@@ -173,10 +182,9 @@ pon-automotive-lab/
 │   ├── 02_data_ingestion.sql ← Module 2: External access and UDFs
 │   ├── 03_dynamic_tables.sql ← Module 3: Automated pipelines
 │   ├── 04_scaling_cost.sql   ← Module 4: Warehouses and monitors
-│   └── 05_data_sharing.sql   ← Module 5: Secure sharing
-├── streamlit_app.py          ← Dashboard code
-├── environment.yml           ← Conda dependencies for Streamlit
-└── requirements.txt          ← Pip dependencies
+│   ├── 05_data_sharing.sql   ← Module 5: Secure sharing
+│   └── 06_marketplace.sql    ← Module 6: Marketplace data queries
+└── streamlit_app.py          ← Module 7: Dashboard code (copy to Snowsight)
 ```
 
 ## About This Lab

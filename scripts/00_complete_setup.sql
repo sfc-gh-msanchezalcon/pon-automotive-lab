@@ -195,16 +195,16 @@ SELECT registration_year, total_vehicles, ev_count,
     END AS yoy_growth_percent
 FROM yearly ORDER BY registration_year;
 
--- EV Infrastructure Correlation
+-- EV Infrastructure Correlation (correlates EVs with LAADPALEN, not parking locations!)
 CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.EV_INFRASTRUCTURE_CORRELATION TARGET_LAG = '1 hour' WAREHOUSE = PON_ANALYTICS_WH AS
 SELECT e.postal_area, e.electric_vehicles, e.ev_percentage,
-    COALESCE(p.parking_locations, 0) AS parking_locations,
-    CASE WHEN p.parking_locations > 0 THEN ROUND(e.electric_vehicles / p.parking_locations, 0) END AS evs_per_parking_location
+    COALESCE(l.total_laadpalen, 0) AS charging_points,
+    CASE WHEN l.total_laadpalen > 0 THEN ROUND(e.electric_vehicles / l.total_laadpalen, 0) END AS evs_per_charging_point
 FROM CURATED.EV_BY_REGION e
 LEFT JOIN (
-    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(*) AS parking_locations
-    FROM RAW.PARKING_ADDRESS_RAW WHERE zipcode IS NOT NULL AND zipcode != '' GROUP BY LEFT(zipcode, 2)
-) p ON e.postal_area = p.postal_area
+    SELECT LEFT(postcode, 2) AS postal_area, SUM(aantal) AS total_laadpalen
+    FROM ANALYTICS.LAADPALEN_PER_POSTCODE GROUP BY LEFT(postcode, 2)
+) l ON e.postal_area = l.postal_area
 WHERE e.total_vehicles > 5000;
 
 -- Laadpalen per Postcode (Target Model from PDF: joins Parkeeradres with SPECIFICATIES via parkingaddressreference=areamanagerid)

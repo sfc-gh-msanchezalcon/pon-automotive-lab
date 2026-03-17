@@ -472,31 +472,35 @@ GROUP BY areamanagerid;
 
 ### 3.3 Create the Correlation Analysis
 
-This joins EV data with infrastructure to answer: "Does charging availability correlate with EV adoption?"
+This joins EV data with **charging points (laadpalen)** to directly answer the PDF question: *"zie je dat terug in aantal beschikbare laadpalen?"*
 
 ```sql
 CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
     TARGET_LAG = '1 hour'
     WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Correlation between EV adoption and charging infrastructure (laadpalen)'
 AS
 SELECT 
     e.postal_area,
     e.electric_vehicles,
     e.ev_percentage,
-    COALESCE(p.parking_locations, 0) AS parking_locations,
+    COALESCE(l.total_laadpalen, 0) AS charging_points,
     CASE 
-        WHEN p.parking_locations > 0 
-        THEN ROUND(e.electric_vehicles / p.parking_locations, 0) 
-    END AS evs_per_parking_location
+        WHEN l.total_laadpalen > 0 
+        THEN ROUND(e.electric_vehicles / l.total_laadpalen, 0) 
+    END AS evs_per_charging_point
 FROM PON_EV_LAB.CURATED.EV_BY_REGION e
 LEFT JOIN (
-    SELECT LEFT(zipcode, 2) AS postal_area, COUNT(*) AS parking_locations
-    FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW 
-    WHERE zipcode IS NOT NULL AND zipcode != ''
-    GROUP BY LEFT(zipcode, 2)
-) p ON e.postal_area = p.postal_area
+    SELECT 
+        LEFT(postcode, 2) AS postal_area,
+        SUM(aantal) AS total_laadpalen
+    FROM PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
+    GROUP BY LEFT(postcode, 2)
+) l ON e.postal_area = l.postal_area
 WHERE e.total_vehicles > 5000;
 ```
+
+> **This is the key insight!** High `evs_per_charging_point` values indicate regions where charging infrastructure lags behind EV adoption - these are expansion opportunities for Pon's charging partnerships.
 
 ### 3.4 Create the Target Model: Laadpalen per Postcode
 

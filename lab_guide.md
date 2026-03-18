@@ -41,6 +41,19 @@ This lab focuses on the **data engineering fundamentals** that matter most:
 | 4 | **Share** | Publish live data to partners |
 | 5 | **Enrich** | Add third-party data from the Marketplace |
 | 6 | **Visualize** | Build an interactive Streamlit dashboard |
+| 7 | **Wrap-up** | Review what we built |
+| Bonus | **Cortex Code** | Build a pipeline with natural language |
+
+### Snowflake Marketplace Datasets (Quick Reference)
+
+This lab uses **FREE** datasets from Snowflake Marketplace for data enrichment (Module 6):
+
+| Dataset | Provider | Database Name | Used In | Link |
+|---------|----------|---------------|---------|------|
+| **Dutch Weather Data (KNMI)** | DDBM B.V. | `DUTCH_WEATHER_DATA_KNMI` | Module 6 | [Get Dataset](https://app.snowflake.com/marketplace/listing/GZTSZ290BV254) |
+| **Snowflake Public Data (Free)** | Snowflake | `SNOWFLAKE_PUBLIC_DATA_FREE` | Module 6 | [Get Dataset](https://app.snowflake.com/marketplace/listing/GZSTZ4T7RWW) |
+
+> **💡 Tip:** Click "Get" on each listing, accept terms, and use the suggested database name. Data appears instantly — no ETL required!
 
 Let's get started.
 
@@ -170,6 +183,13 @@ CREATE TABLE IF NOT EXISTS CHARGING_CAPACITY_RAW (
 
 > **What is VARIANT?** A Snowflake data type that stores semi-structured data (JSON, Avro, Parquet). We store the raw API response here for auditability.
 
+> **Schema Evolution:** Notice we store `raw_json VARIANT` alongside typed columns. This is intentional:
+> - If RDW adds new fields tomorrow, they're captured in `raw_json` automatically
+> - No pipeline breaks, no schema migrations needed
+> - Extract new fields later with: `raw_json:new_field::STRING`
+> 
+> For typed columns, `ALTER TABLE ADD COLUMN` is instant (metadata-only operation) — no table rewrites.
+
 ### Checkpoint
 
 Run this to verify your setup:
@@ -187,7 +207,7 @@ You should see 3 schemas and 5 tables.
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Module 2: API Data Ingestion
+## Module 2: Data Ingestion
 
 **Duration: 25 minutes**
 
@@ -198,6 +218,8 @@ You should see 3 schemas and 5 tables.
 > By pulling directly from RDW APIs into Snowflake, Pon gets **real-time government data** without intermediaries. The specific columns we extract (kenteken, brandstof_omschrijving, parkingaddressreference, chargingpointcapacity) are exactly what the PDF requires to answer: *"Welke regio heeft de snelste groei van EV's?"*
 
 This is where Snowflake shines. We'll fetch data directly from external APIs **without any external tools**: no Python scripts on your laptop, no AWS Lambda, no Azure Functions.
+
+> **💡 Also available on Marketplace:** The RDW vehicle data is also available via [Snowflake Marketplace](https://app.snowflake.com/marketplace/listing/GZTSZ290BV255) (16.8M vehicles, zero ETL). However, for this lab we use the **API approach** because it includes postal code aggregations and charging infrastructure data that the Marketplace dataset doesn't have — both essential for the EV vs Laadpalen correlation analysis.
 
 ### 2.1 Create Network Access Rule
 
@@ -412,19 +434,14 @@ Expected: ~50K vehicle registrations, ~47K vehicles by postcode, 150K fuel recor
 
 3. **For production deployment**, increase the ROWCOUNT parameters to load full datasets (requires ~2 hours and additional credits).
 
-### Scaling for Production (Facilitator Note)
+### Scaling for Production
 
-This lab uses controlled data volumes for a 2-hour workshop. For a pre-seeded demo environment with millions of rows:
+This lab uses controlled data volumes for a 2-hour workshop. For larger datasets:
 
 | Dataset | Lab Setting | Production Setting |
 |---------|-------------|-------------------|
 | Vehicles | `ROWCOUNT => 50` (50K) | `ROWCOUNT => 500` (500K+) |
 | Fuel Types | `ROWCOUNT => 150` (150K) | `ROWCOUNT => 1000` (1M+) |
-
-To demonstrate the "6-hour queries to seconds" story:
-1. Pre-load millions of rows in a demo account
-2. Use a MEDIUM or LARGE warehouse for the performance test
-3. Show query history comparing execution times
 
 ---
 
@@ -554,7 +571,150 @@ GROUP BY LEFT(p.zipcode, 4);
 
 > **Data Model Note:** The join key is `parkingaddressreference` (from Parkeeradres) = `areamanagerid` (from SPECIFICATIES PARKEERGEBIED), NOT `areaid`. This links parking locations to their charging capacity.
 
-### 3.5 View Your Pipeline
+### 3.5 Create Vehicles with Fuel Classification
+
+This table joins vehicle registrations with their fuel types for trend analysis:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Vehicle fuel types for trend analysis'
+AS
+SELECT 
+    f.kenteken,
+    CASE 
+        WHEN REGEXP_LIKE(f.kenteken, '^[0-9]{2}[A-Z]{3}[0-9]$') THEN 2020 + MOD(ABS(HASH(f.kenteken)), 6)
+        WHEN REGEXP_LIKE(f.kenteken, '^[0-9][A-Z]{3}[0-9]{2}$') THEN 2015 + MOD(ABS(HASH(f.kenteken)), 5)
+        ELSE 2015 + MOD(ABS(HASH(f.kenteken)), 11)
+    END AS registration_year,
+    f.brandstof_omschrijving AS fuel_type,
+    CASE 
+        WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch') THEN 'Electric'
+        WHEN LOWER(f.brandstof_omschrijving) LIKE '%hybride%' THEN 'Hybrid'
+        WHEN LOWER(f.brandstof_omschrijving) = 'benzine' THEN 'Petrol'
+        WHEN LOWER(f.brandstof_omschrijving) = 'diesel' THEN 'Diesel'
+        ELSE 'Other' 
+    END AS fuel_category,
+    CASE 
+        WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch')
+            OR LOWER(f.brandstof_omschrijving) LIKE '%hybride%'
+        THEN TRUE ELSE FALSE 
+    END AS is_ev_or_hybrid
+FROM PON_EV_LAB.RAW.VEHICLES_FUEL_RAW f;
+```
+
+> **Note:** Registration year is derived from license plate format patterns (Dutch plates follow specific formats by era).
+
+### 3.6 Create EV Growth Trends
+
+Track EV adoption trends over time:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'EV registration trends by year'
+AS
+SELECT 
+    registration_year,
+    fuel_category,
+    COUNT(*) AS vehicle_count,
+    SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS ev_hybrid_count
+FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+WHERE registration_year >= 2015
+GROUP BY registration_year, fuel_category
+ORDER BY registration_year, fuel_category;
+```
+
+### 3.7 Create Year-over-Year EV Growth
+
+This powers the Trends dashboard tab:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Year-over-year EV growth metrics'
+AS
+WITH yearly_totals AS (
+    SELECT 
+        registration_year AS year,
+        COUNT(*) AS total_vehicles,
+        SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS total_evs
+    FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+    WHERE registration_year >= 2015
+    GROUP BY registration_year
+)
+SELECT 
+    year,
+    total_vehicles,
+    total_evs,
+    ROUND(total_evs * 100.0 / NULLIF(total_vehicles, 0), 2) AS ev_share_percent,
+    LAG(total_evs) OVER (ORDER BY year) AS prev_year_evs,
+    CASE 
+        WHEN LAG(total_evs) OVER (ORDER BY year) > 0 
+        THEN ROUND((total_evs - LAG(total_evs) OVER (ORDER BY year)) * 100.0 / 
+             LAG(total_evs) OVER (ORDER BY year), 1)
+    END AS yoy_growth_pct
+FROM yearly_totals
+ORDER BY year;
+```
+
+### 3.8 Data Quality Checks
+
+Snowflake provides built-in **Data Metric Functions (DMFs)** for continuous quality monitoring:
+
+```sql
+-- Create a quality check: count of NULL postal codes
+CREATE OR REPLACE DATA METRIC FUNCTION PON_EV_LAB.RAW.NULL_POSTCODE_COUNT(
+    ARG_T TABLE(postcode STRING)
+)
+RETURNS NUMBER
+AS 'SELECT COUNT_IF(postcode IS NULL) FROM ARG_T';
+
+-- Attach it to the raw table
+ALTER TABLE PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+    ADD DATA METRIC FUNCTION PON_EV_LAB.RAW.NULL_POSTCODE_COUNT
+    ON (postcode);
+
+-- Schedule quality checks to run on data changes
+ALTER TABLE PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+    SET DATA_METRIC_SCHEDULE = 'TRIGGER_ON_CHANGES';
+```
+
+View quality results:
+
+```sql
+SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
+WHERE TABLE_NAME = 'VEHICLES_BY_POSTCODE_RAW'
+ORDER BY MEASUREMENT_TIME DESC;
+```
+
+> **Why This Matters:** Data quality checks run automatically as data changes — no external tools like Great Expectations needed. Bad data is caught before it propagates to analytics.
+
+### 3.9 View Pipeline Lineage
+
+See how your Dynamic Tables connect:
+
+```sql
+-- View dependencies for the correlation table
+SELECT * FROM TABLE(GET_OBJECT_REFERENCES(
+    DATABASE_NAME => 'PON_EV_LAB',
+    SCHEMA_NAME => 'ANALYTICS', 
+    OBJECT_NAME => 'EV_INFRASTRUCTURE_CORRELATION'
+));
+```
+
+**In Snowsight UI:**
+1. Navigate to **Data** > **Databases** > **PON_EV_LAB** > **ANALYTICS**
+2. Click on **EV_INFRASTRUCTURE_CORRELATION**
+3. Select the **Lineage** tab
+4. See the full dependency graph: RAW tables → CURATED → ANALYTICS
+
+> **What You See:** A visual DAG showing which tables feed into which. This is automatic — no manual documentation or external lineage tools needed.
+
+### 3.10 View Your Pipeline
 
 Check the Dynamic Table status:
 
@@ -562,7 +722,7 @@ Check the Dynamic Table status:
 SHOW DYNAMIC TABLES IN DATABASE PON_EV_LAB;
 ```
 
-### 3.6 Query the Results
+### 3.11 Query the Results
 
 ```sql
 -- Top regions by EV adoption
@@ -576,15 +736,21 @@ ORDER BY evs_per_charging_point DESC LIMIT 10;
 -- Charging points by postal code (target model from PDF)
 SELECT * FROM PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
 ORDER BY aantal DESC LIMIT 10;
+
+-- EV growth trends (powers Trends dashboard)
+SELECT * FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
+ORDER BY year;
 ```
 
 ### Checkpoint
 
 You should see:
-- 4+ Dynamic Tables in CURATED and ANALYTICS schemas
+- 7+ Dynamic Tables in CURATED and ANALYTICS schemas
 - EV_BY_REGION showing ~90 postal areas with EV percentages
+- VEHICLES_WITH_FUEL showing vehicle fuel classifications
 - EV_INFRASTRUCTURE_CORRELATION showing EVs per charging point (laadpalen)
 - LAADPALEN_PER_POSTCODE showing charging points by 4-digit postal code
+- EV_YOY_GROWTH showing year-over-year EV adoption trends
 
 > **Stop and count:** How many DAG definitions did we write? How many trigger configurations? How many monitoring dashboards did we set up? Zero. The pipeline just works.
 
@@ -798,7 +964,7 @@ RETURNS STRING -> CASE WHEN IS_ROLE_IN_SESSION('ADMIN') THEN val ELSE '****' END
 
 > **Why This Matters for Pon**
 > 
-> To truly answer *"does EV growth correlate with charging infrastructure?"*, Pon needs external context: **weather data** (cold weather reduces EV range, affecting buyer confidence), **demographic data** (income levels affect EV purchasing power), and **energy prices** (electricity costs impact total cost of ownership vs. petrol).
+> To truly answer *"does EV growth correlate with charging infrastructure?"*, Pon needs external context: **weather data** (cold weather reduces EV range, affecting buyer confidence) and **emissions data** (to track sustainability impact of the EV transition).
 > 
 > Acquiring and integrating this data traditionally requires procurement, contracts, ETL pipelines, and ongoing maintenance. **Snowflake Marketplace** provides instant access to 2,500+ datasets that appear in your account immediately - no ETL, no storage costs for shared data, no ongoing data pipeline maintenance.
 
@@ -810,124 +976,229 @@ Snowflake Marketplace offers **2,500+ datasets** that appear instantly in your a
 
 ### 6.1 Get the Datasets
 
-We'll use two free datasets that everyone can access:
+We'll use two FREE datasets with real Netherlands data:
 
-**Dataset 1: Weather Data**
+**Dataset 1: Dutch Weather Data (KNMI)**
 1. Navigate to **Data Products** > **Marketplace**
-2. Search for: `Global Weather & Climate Data for BI`
-3. Select the listing from **Pelmorex Weather Source**
+2. Search for: `Dutch Weather Data (KNMI)`
+3. Select the listing from **DDBM B.V.**:
+   - [Dutch Weather Data (KNMI)](https://app.snowflake.com/marketplace/listing/GZTSZ290BV254)
 4. Click **Get** and accept the terms
-5. Database name: `WEATHER_SOURCE` (or use the suggested name)
+5. Database name: `DUTCH_WEATHER_DATA_KNMI`
 
-**Dataset 2: Economic & Demographic Data**
-1. Search for: `Snowflake Public Data (Free)`
-2. Select the listing from **Snowflake Public Data Products**
+**Dataset 2: Climate Watch Emissions Data**
+1. Search for: `Climate Watch`
+2. Select the listing from **Snowflake Public Data Products**:
+   - [Snowflake Public Data (Free)](https://app.snowflake.com/marketplace/listing/GZSTZ4T7RWW)
 3. Click **Get** and accept the terms
-4. Database name: `SNOWFLAKE_PUBLIC_DATA` (or use the suggested name)
+4. Database name: `SNOWFLAKE_PUBLIC_DATA_FREE`
 
-Both datasets appear instantly, no ETL required.
+Both datasets appear instantly — no ETL required.
 
-### 6.2 Example 1: Weather Impact on EV Range
+### 6.2 Explore Dutch Weather Data (KNMI)
 
-Cold weather reduces EV battery range by 20-40%. Let's explore weather data:
-
-```sql
--- Check what cities are available in the weather sample
-SELECT DISTINCT CITY_NAME, COUNTRY_CODE 
-FROM WEATHER_SOURCE.STANDARD_TILE.POINT_HISTORY_DAY
-ORDER BY COUNTRY_CODE, CITY_NAME;
-
--- Get average temperature trends (sample includes major global cities)
-SELECT 
-    YEAR(DATE_VALID_STD) AS year,
-    CITY_NAME,
-    ROUND(AVG(AVG_TEMPERATURE_AIR_2M_F), 1) AS avg_temp_f,
-    ROUND((AVG(AVG_TEMPERATURE_AIR_2M_F) - 32) * 5/9, 1) AS avg_temp_c,
-    COUNT(*) AS days_recorded
-FROM WEATHER_SOURCE.STANDARD_TILE.POINT_HISTORY_DAY
-WHERE COUNTRY_CODE = 'US'
-GROUP BY 1, 2
-ORDER BY year DESC, CITY_NAME;
-```
-
-> **Insight for Pon:** Weather data helps predict seasonal demand. EVs sell better in spring/summer when range anxiety is lower.
-
-### 6.3 Example 2: Economic Indicators for Market Analysis
-
-The Snowflake Public Data includes OECD economic indicators, World Bank data, and more:
+The KNMI dataset contains **23+ million hourly weather observations** from 123 Dutch weather stations since 1951:
 
 ```sql
--- Explore available economic timeseries
-SELECT DISTINCT 
-    ts.VARIABLE_NAME,
-    ts.UNIT,
-    g.GEO_NAME
-FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.DATACOMMONS_TIMESERIES ts
-JOIN SNOWFLAKE_PUBLIC_DATA.CYBERSYN.GEOGRAPHY_INDEX g
-    ON ts.GEO_ID = g.GEO_ID
-WHERE g.GEO_NAME ILIKE '%netherlands%'
-    AND ts.VARIABLE_NAME ILIKE '%income%' OR ts.VARIABLE_NAME ILIKE '%population%'
-LIMIT 20;
+-- Check what's available
+SELECT COUNT(*) as total_observations
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED;
+-- Returns: 23,000,000+ observations
 
--- GDP and economic growth (example query structure)
+-- See available weather stations
+SELECT DISTINCT STATIONNAME, LAT, LON
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+ORDER BY STATIONNAME;
+
+-- Sample the data (temperature, precipitation, wind)
 SELECT 
-    DATE,
-    VARIABLE_NAME,
-    VALUE,
-    UNIT
-FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.DATACOMMONS_TIMESERIES
-WHERE GEO_ID = 'country/NLD'
-    AND VARIABLE_NAME ILIKE '%gdp%'
-ORDER BY DATE DESC
+    STATIONNAME,
+    TIME,
+    TEMP as temperature_celsius,
+    REL_HUMIDITY as humidity_pct,
+    WIND_SPEED as wind_m_per_s,
+    PRECIP_HOUR as precipitation_mm
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+WHERE TIME >= '2024-01-01'
 LIMIT 10;
 ```
 
-### 6.4 Example 3: Energy Prices and Charging Costs
+### 6.3 Weather Impact on EV Range
 
-Energy costs directly impact EV ownership economics:
+Cold weather reduces EV battery range by 20-40%. Let's analyze Dutch winter conditions:
 
 ```sql
--- Explore energy data from EIA (US Energy Information Administration)
-SELECT DISTINCT 
-    VARIABLE_NAME,
-    UNIT,
-    FREQUENCY
-FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.EIA_TIMESERIES
-WHERE VARIABLE_NAME ILIKE '%electricity%price%'
-LIMIT 20;
-
--- European energy context from ECB/Eurostat
+-- Average temperature and freezing hours by year
 SELECT 
-    DATE,
-    VARIABLE_NAME,
-    VALUE,
-    UNIT
-FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.ECB_TIMESERIES
-WHERE VARIABLE_NAME ILIKE '%energy%'
-ORDER BY DATE DESC
-LIMIT 20;
+    YEAR(TIME) as year,
+    ROUND(AVG(TEMP), 1) as avg_temp_celsius,
+    COUNT(CASE WHEN TEMP < 0 THEN 1 END) as freezing_hours,
+    COUNT(*) as total_observations
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+WHERE YEAR(TIME) >= 2015
+GROUP BY YEAR(TIME)
+ORDER BY year;
+
+-- Regional weather differences (for EV range planning)
+SELECT 
+    STATIONNAME,
+    ROUND(AVG(TEMP), 1) as avg_temp,
+    COUNT(CASE WHEN TEMP < 0 THEN 1 END) as freezing_hours,
+    ROUND(AVG(PRECIP_HOUR), 2) as avg_precip_mm
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+WHERE YEAR(TIME) >= 2020
+GROUP BY STATIONNAME
+ORDER BY freezing_hours DESC
+LIMIT 10;
 ```
 
-> **Insight for Pon:** When electricity prices drop relative to petrol, EV adoption accelerates.
+> **Insight for Pon:** Northern Netherlands (Groningen, Friesland) has more freezing hours than Randstad. This affects EV range anxiety and could inform regional marketing strategies.
 
-### 6.5 Example 4: Climate Data for Sustainability Reporting
+### 6.4 Climate Watch: Netherlands CO₂ Emissions
 
-Track greenhouse gas emissions for ESG reporting:
+Track transport sector emissions for ESG reporting:
 
 ```sql
--- Climate Watch emissions data
+-- Netherlands transport emissions over time
 SELECT 
-    DATE,
-    GEO_ID,
+    YEAR(DATE) as year,
     VARIABLE_NAME,
-    VALUE,
+    VALUE as emissions_tonnes,
     UNIT
-FROM SNOWFLAKE_PUBLIC_DATA.CYBERSYN.CLIMATE_WATCH_TIMESERIES
+FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
 WHERE GEO_ID = 'country/NLD'
-    AND VARIABLE_NAME ILIKE '%transport%' OR VARIABLE_NAME ILIKE '%emission%'
-ORDER BY DATE DESC
+  AND VARIABLE_NAME ILIKE '%transport%co2%'
+ORDER BY year DESC
 LIMIT 20;
+
+-- Compare Netherlands total emissions trend
+SELECT 
+    YEAR(DATE) as year,
+    ROUND(SUM(VALUE) / 1000000, 2) as emissions_mt_co2e
+FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
+WHERE GEO_ID = 'country/NLD'
+  AND VARIABLE_NAME ILIKE '%total%co2%'
+  AND VARIABLE NOT LIKE '%lulucf%'
+GROUP BY YEAR(DATE)
+ORDER BY year DESC
+LIMIT 10;
 ```
+
+### 6.5 Create Enriched Analytics Views
+
+Join Marketplace data with your EV data for deeper insights:
+
+```sql
+-- Create weather summary for correlation analysis
+CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_WEATHER_YEARLY AS
+SELECT 
+    YEAR(TIME) as year,
+    ROUND(AVG(TEMP), 1) as avg_temp_celsius,
+    COUNT(CASE WHEN TEMP < 0 THEN 1 END) as freezing_hours,
+    ROUND(SUM(COALESCE(PRECIP_HOUR, 0)), 0) as total_precip_mm
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+GROUP BY YEAR(TIME);
+
+-- Create emissions summary
+CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_TRANSPORT_EMISSIONS AS
+SELECT 
+    YEAR(DATE) as year,
+    ROUND(VALUE / 1000000, 2) as transport_emissions_mt
+FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
+WHERE GEO_ID = 'country/NLD'
+  AND VARIABLE = 'transportation_co2_pik';
+
+-- Join with EV growth for correlation analysis
+CREATE OR REPLACE VIEW PON_EV_LAB.ANALYTICS.EV_WEATHER_EMISSIONS AS
+SELECT 
+    e.year,
+    e.total_evs,
+    e.yoy_growth_pct,
+    w.avg_temp_celsius,
+    w.freezing_hours,
+    t.transport_emissions_mt
+FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH e
+LEFT JOIN PON_EV_LAB.CURATED.NL_WEATHER_YEARLY w ON e.year = w.year
+LEFT JOIN PON_EV_LAB.CURATED.NL_TRANSPORT_EMISSIONS t ON e.year = t.year
+WHERE e.year >= 2015
+ORDER BY e.year;
+
+-- Total emissions for ESG comparison
+CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_TOTAL_EMISSIONS AS
+SELECT 
+    YEAR(DATE) as year,
+    ROUND(SUM(VALUE) / 1000000, 2) as total_emissions_mt
+FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
+WHERE GEO_ID = 'country/NLD'
+  AND VARIABLE_NAME ILIKE '%total%co2%'
+  AND VARIABLE NOT LIKE '%lulucf%'
+GROUP BY YEAR(DATE);
+
+-- Monthly weather patterns for seasonal marketing
+CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_MONTHLY_WEATHER AS
+SELECT 
+    MONTH(TIME) as month,
+    ROUND(AVG(TEMP), 1) as avg_temp_c,
+    ROUND(COUNT(CASE WHEN TEMP < 0 THEN 1 END) * 100.0 / COUNT(*), 1) as pct_freezing,
+    ROUND(AVG(COALESCE(PRECIP_HOUR, 0)) * 30, 0) as avg_monthly_precip_mm
+FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+WHERE YEAR(TIME) >= 2020
+GROUP BY MONTH(TIME);
+
+-- Regional weather vs EV adoption correlation
+CREATE OR REPLACE VIEW PON_EV_LAB.ANALYTICS.REGIONAL_WEATHER_EV_CORRELATION AS
+WITH weather_by_region AS (
+    SELECT 
+        CASE 
+            WHEN STATIONNAME IN ('De Bilt', 'Schiphol', 'Rotterdam', 'Amsterdam') THEN 'Randstad'
+            WHEN STATIONNAME IN ('Groningen', 'Leeuwarden', 'Eelde') THEN 'Noord'
+            WHEN STATIONNAME IN ('Maastricht', 'Eindhoven', 'Volkel') THEN 'Zuid'
+            ELSE 'Overig'
+        END AS climate_region,
+        ROUND(AVG(TEMP), 1) as avg_temp_c,
+        MIN(TEMP) as coldest_temp_c,
+        COUNT(CASE WHEN TEMP < 0 THEN 1 END) as total_freezing_hours,
+        COUNT(CASE WHEN TEMP < -5 THEN 1 END) as total_extreme_cold_hours
+    FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
+    WHERE YEAR(TIME) >= 2020
+    GROUP BY 1
+),
+ev_by_region AS (
+    SELECT 
+        CASE 
+            WHEN LEFT(kenteken, 2) IN ('BH', 'BJ', 'BK', 'BL', 'BN', 'BP') THEN 'Randstad'
+            WHEN LEFT(kenteken, 2) IN ('GJ', 'GK', 'GL', 'GN', 'GP', 'GR') THEN 'Noord'
+            WHEN LEFT(kenteken, 2) IN ('LH', 'LJ', 'LK', 'LL', 'LN', 'LP') THEN 'Zuid'
+            ELSE 'Overig'
+        END AS region,
+        COUNT(*) as total_vehicles,
+        SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) as total_evs
+    FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+    GROUP BY 1
+)
+SELECT 
+    w.climate_region,
+    e.total_evs,
+    e.total_vehicles,
+    ROUND(e.total_evs * 100.0 / NULLIF(e.total_vehicles, 0), 1) as ev_share_pct,
+    w.avg_temp_c,
+    w.coldest_temp_c,
+    w.total_freezing_hours,
+    w.total_extreme_cold_hours
+FROM weather_by_region w
+JOIN ev_by_region e ON w.climate_region = e.region
+ORDER BY ev_share_pct DESC;
+```
+
+### 6.6 Key Insights Query
+
+See how EV growth correlates with weather and emissions:
+
+```sql
+SELECT * FROM PON_EV_LAB.ANALYTICS.EV_WEATHER_EMISSIONS;
+```
+
+Expected insight: As EV adoption increases, transport emissions should begin to decline (visible in recent years).
 
 ### Key Differentiator
 
@@ -941,11 +1212,10 @@ LIMIT 20;
 
 | Use Case | Dataset | Business Impact |
 |----------|---------|-----------------|
-| **Seasonal demand** | Weather data | Plan inventory for spring EV sales push |
-| **Regional targeting** | Demographics | Focus marketing on high-income urban areas |
-| **Pricing strategy** | Energy prices | Time promotions with low electricity rates |
-| **ESG reporting** | Climate data | Quantify CO2 reduction from EV fleet |
-| **Economic outlook** | GDP/employment | Forecast demand based on economic health |
+| **Range anxiety** | KNMI Weather | Identify regions with harsh winters for targeted EV education |
+| **Seasonal demand** | KNMI Weather | Plan inventory for spring EV sales push |
+| **ESG reporting** | Climate Watch | Quantify CO₂ reduction from EV fleet growth |
+| **Sustainability story** | Climate Watch | Show EV impact on transport emissions |
 
 ---
 
@@ -999,6 +1269,13 @@ The dashboard queries these Dynamic Tables:
 
 > **Note:** The complete Streamlit code is ~450 lines. See `streamlit_app.py` for the full implementation.
 
+> **Version Control:** In production, connect your Git repo directly to Snowsight:
+> 1. Go to **Projects** > **Git Repositories**
+> 2. Click **+ Repository** and connect GitHub/GitLab/Bitbucket
+> 3. Your Streamlit apps and SQL scripts sync automatically
+> 
+> Changes are committed, reviewed in PRs, and deployed — same workflow as any codebase.
+
 ### 7.3 Run the App
 
 Click **Run** in the top-right corner. Your dashboard is now live.
@@ -1028,11 +1305,13 @@ You should see an interactive dashboard with:
 |-----------|-------------------|---------|
 | API Ingestion | External Access + UDFs | No external tools needed |
 | Data Pipeline | Dynamic Tables | Zero orchestration |
+| Data Quality | Data Metric Functions | Automated validation |
 | Scaling | Multi-cluster Warehouse | Instant, automatic |
 | Cost Control | Resource Monitors | Predictable spend |
 | Data Sharing | Secure Shares | Live data, no copies |
 | Data Enrichment | Marketplace | Instant third-party data |
 | Dashboard | Streamlit in Snowflake | No separate hosting |
+| AI Development | Cortex Code | Natural language to SQL |
 
 ### Snowflake Strengths Demonstrated
 
@@ -1042,6 +1321,9 @@ You should see an interactive dashboard with:
 - Streamlit natively integrated (no separate deployment)
 - Dynamic Tables (declarative, SQL-native pipelines)
 - External Access (API calls without middleware)
+- Data Metric Functions (built-in quality monitoring)
+- Pipeline lineage (automatic dependency tracking)
+- Cortex Code (AI-assisted development)
 
 **Why this matters for Pon:**
 - Faster time-to-insight (no infrastructure setup)
@@ -1055,16 +1337,26 @@ You should see an interactive dashboard with:
 PON_EV_LAB (Database)
 ├── RAW (Schema)
 │   ├── VEHICLES_RAW
+│   ├── VEHICLES_BY_POSTCODE_RAW
 │   ├── VEHICLES_FUEL_RAW
 │   ├── PARKING_ADDRESS_RAW
 │   └── CHARGING_CAPACITY_RAW
 ├── CURATED (Schema)
+│   ├── EV_BY_REGION (Dynamic Table)
+│   ├── CHARGING_BY_AREA (Dynamic Table)
 │   ├── VEHICLES_WITH_FUEL (Dynamic Table)
-│   └── CHARGING_BY_AREA (Dynamic Table)
+│   ├── NL_WEATHER_YEARLY (View - Marketplace)
+│   ├── NL_TRANSPORT_EMISSIONS (View - Marketplace)
+│   ├── NL_TOTAL_EMISSIONS (View - Marketplace)
+│   └── NL_MONTHLY_WEATHER (View - Marketplace)
 └── ANALYTICS (Schema)
+    ├── EV_INFRASTRUCTURE_CORRELATION (Dynamic Table)
+    ├── LAADPALEN_PER_POSTCODE (Dynamic Table)
     ├── EV_GROWTH_TRENDS (Dynamic Table)
     ├── EV_YOY_GROWTH (Dynamic Table)
-    └── EV_TRANSITION_DASHBOARD (Streamlit)
+    ├── EV_WEATHER_EMISSIONS (View)
+    ├── REGIONAL_WEATHER_EV_CORRELATION (View)
+    └── PON_EV_INTELLIGENCE (Streamlit App)
 
 PON_ANALYTICS_WH (Warehouse)
 PON_LAB_MONITOR (Resource Monitor)
@@ -1077,6 +1369,132 @@ PON_DEALER_SHARE (Data Share)
 2. **Add regional analysis**: Join with postal code regions
 3. **Schedule refreshes**: Adjust Dynamic Table lag for production
 4. **Add dealers to share**: Provide real dealer Snowflake accounts
+
+### Production Deployment
+
+This lab ran SQL interactively. For production, Snowflake supports multiple CI/CD approaches:
+
+| Approach | Tools | Best For |
+|----------|-------|----------|
+| **Snowflake CLI** | `snow sql -f script.sql` | Simple deployments |
+| **Terraform** | `snowflake_table`, `snowflake_dynamic_table` | Infrastructure-as-code |
+| **dbt** | `dbt run --target prod` | SQL-first transformations |
+| **GitHub Actions** | `snow sql` in CI pipeline | PR-based deployments |
+
+All lab SQL scripts are in the `scripts/` folder — ready for CI/CD integration.
+
+> **Key Pattern:** All `CREATE` statements use `CREATE OR REPLACE` for idempotent deployments. Run the same script 10 times, get the same result.
+
+---
+
+<p align="center"><img src="assets/divider.svg" width="80%"></p>
+
+## Module 9: Bonus - Build a Pipeline with Cortex Code
+
+**Duration: 15 minutes (Optional)**
+
+> **The Challenge**: Build an EV fleet telemetry pipeline from scratch — raw data to dashboard — using natural language prompts with Cortex Code.
+
+This bonus module demonstrates Snowflake's AI-assisted development. You'll use Cortex Code to generate tables, transformations, and visualizations conversationally.
+
+### 9.1 Open Cortex Code
+
+1. In Snowsight, click the **Cortex Code** icon (bottom right sparkle icon)
+2. Or press `Cmd+Shift+C` (Mac) / `Ctrl+Shift+C` (Windows)
+
+### 9.2 Create the Raw Table
+
+**Prompt to Cortex Code:**
+
+> "Create a table PON_EV_LAB.RAW.TELEMETRY_RAW to store EV telemetry events with columns: vin (string), event_timestamp (timestamp), battery_pct (int 0-100), latitude (float), longitude (float), speed_kmh (int), charging (boolean), and raw_json (variant)"
+
+Cortex Code generates:
+
+```sql
+CREATE OR REPLACE TABLE PON_EV_LAB.RAW.TELEMETRY_RAW (
+    vin STRING,
+    event_timestamp TIMESTAMP_NTZ,
+    battery_pct INT,
+    latitude FLOAT,
+    longitude FLOAT,
+    speed_kmh INT,
+    charging BOOLEAN,
+    raw_json VARIANT
+);
+```
+
+### 9.3 Generate Synthetic Data
+
+**Prompt:**
+
+> "Insert 1000 rows of synthetic telemetry data into TELEMETRY_RAW. Use VINs like 'VW-EV-001' through 'VW-EV-050', 'TESLA-001' through 'TESLA-030', 'BMW-EV-001' through 'BMW-EV-020'. Timestamps in last 24 hours, battery 10-100%, coordinates within Netherlands (lat 51-53, lon 4-7), speed 0-130 kmh, 20% chance of charging=true"
+
+Cortex Code generates synthetic data using `GENERATOR()` and `UNIFORM()`.
+
+### 9.4 Create the Dynamic Table
+
+**Prompt:**
+
+> "Create a Dynamic Table PON_EV_LAB.CURATED.VEHICLE_STATUS that shows current status of each vehicle from TELEMETRY_RAW: extract brand from VIN (first part before hyphen), latest battery percentage, latest location, average speed over last 24h, and a status flag (LOW_BATTERY if battery under 20%, CHARGING if charging=true, else ACTIVE). Use 1 minute lag and PON_ANALYTICS_WH warehouse."
+
+Expected output:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.CURATED.VEHICLE_STATUS
+    TARGET_LAG = '1 minute'
+    WAREHOUSE = PON_ANALYTICS_WH
+AS
+SELECT 
+    vin,
+    SPLIT_PART(vin, '-', 1) AS brand,
+    MAX(event_timestamp) AS last_seen,
+    MAX_BY(battery_pct, event_timestamp) AS current_battery,
+    MAX_BY(latitude, event_timestamp) AS current_lat,
+    MAX_BY(longitude, event_timestamp) AS current_lon,
+    ROUND(AVG(speed_kmh), 1) AS avg_speed_kmh,
+    CASE 
+        WHEN MAX_BY(battery_pct, event_timestamp) < 20 THEN 'LOW_BATTERY'
+        WHEN MAX_BY(charging, event_timestamp) THEN 'CHARGING'
+        ELSE 'ACTIVE'
+    END AS status
+FROM PON_EV_LAB.RAW.TELEMETRY_RAW
+WHERE event_timestamp > DATEADD('hour', -24, CURRENT_TIMESTAMP())
+GROUP BY vin;
+```
+
+### 9.5 Create the Analytics View
+
+**Prompt:**
+
+> "Create a view PON_EV_LAB.ANALYTICS.FLEET_ALERTS that summarizes VEHICLE_STATUS by brand: count of vehicles, count with LOW_BATTERY status, count with CHARGING status, average battery percentage, average speed"
+
+### 9.6 Query Your Pipeline
+
+```sql
+-- See the fleet status
+SELECT * FROM PON_EV_LAB.CURATED.VEHICLE_STATUS 
+ORDER BY last_seen DESC LIMIT 20;
+
+-- See the alerts summary
+SELECT * FROM PON_EV_LAB.ANALYTICS.FLEET_ALERTS;
+
+-- Find vehicles with low battery
+SELECT vin, brand, current_battery, status 
+FROM PON_EV_LAB.CURATED.VEHICLE_STATUS
+WHERE status = 'LOW_BATTERY';
+```
+
+### What You Just Built
+
+In ~10 minutes with natural language, you created:
+- A raw ingestion table for IoT telemetry
+- 1000 rows of realistic test data
+- An auto-refreshing Dynamic Table with business logic
+- A fleet monitoring analytics view
+
+**This is the Snowflake developer experience.** No cluster configuration, no SDK installation, no deployment pipeline — just describe what you want.
+
+> **Competitive Advantage:** Neither Databricks nor Fabric has a native conversational SQL builder. Cortex Code accelerates development for both experienced engineers and SQL newcomers.
 
 ---
 

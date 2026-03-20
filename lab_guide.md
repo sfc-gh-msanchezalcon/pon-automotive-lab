@@ -1742,15 +1742,18 @@ PARKING_ADDRESS_RAW (areamanagerid, zipcode, ...)
 RAW (Bronze)                 CURATED (Silver)              ANALYTICS (Gold)
 ──────────────               ────────────────              ────────────────
 VEHICLES_BY_POSTCODE_RAW ──→ EV_BY_REGION ──────────────→ EV_INFRASTRUCTURE_CORRELATION
-                              │                            NATIONAL_EV_SUMMARY
-PARKING_ADDRESS_RAW ────────→ CHARGING_BY_AREA ──────────→ LAADPALEN_PER_POSTCODE
-CHARGING_CAPACITY_RAW ──────┘                              │
-                                                           └→ EV_INFRASTRUCTURE_CORRELATION
+                    │                                      NATIONAL_EV_SUMMARY
+                    └──────────────────────────────────→ BRANDSTOF_PER_POSTCODE
+
+PARKING_ADDRESS_RAW ───────┐
+CHARGING_CAPACITY_RAW ─────┤→ CHARGING_BY_AREA
+                           └──────────────────────────→ LAADPALEN_PER_POSTCODE
+                                                         │
+                                                         └→ EV_INFRASTRUCTURE_CORRELATION
 
 VEHICLES_RAW ───────────────→ VEHICLES_WITH_FUEL ────────→ EV_GROWTH_TRENDS
 VEHICLES_FUEL_RAW ──────────┘                              EV_YOY_GROWTH
                                                            BRANDSTOF_PER_POSTCODE_DATUM
-                                                           BRANDSTOF_PER_POSTCODE
 ```
 
 All arrows represent Dynamic Tables with `TARGET_LAG = '1 hour'`. When source data changes, Snowflake automatically propagates updates through the entire pipeline — no orchestration required.
@@ -1768,6 +1771,7 @@ DROP DATABASE IF EXISTS PON_EV_LAB;
 DROP WAREHOUSE IF EXISTS PON_ANALYTICS_WH;
 DROP RESOURCE MONITOR IF EXISTS PON_LAB_MONITOR;
 DROP SHARE IF EXISTS PON_DEALER_SHARE;
+DROP SHARE IF EXISTS PON_OEM_SHARE;
 DROP EXTERNAL ACCESS INTEGRATION IF EXISTS rdw_api_access;
 DROP NETWORK RULE IF EXISTS rdw_api_rule;
 ```

@@ -50,8 +50,8 @@ This lab uses **FREE** datasets from Snowflake Marketplace for data enrichment (
 
 | Dataset | Provider | Database Name | Used In | Link |
 |---------|----------|---------------|---------|------|
-| **Dutch Weather Data (KNMI)** | DDBM B.V. | `DUTCH_WEATHER_DATA_KNMI` | Module 6 | [Get Dataset](https://app.snowflake.com/marketplace/listing/GZTSZ290BV254) |
-| **Snowflake Public Data (Free)** | Snowflake | `SNOWFLAKE_PUBLIC_DATA_FREE` | Module 6 | [Get Dataset](https://app.snowflake.com/marketplace/listing/GZSTZ4T7RWW) |
+| **Dutch Weather Data (KNMI)** | DDBM B.V. | `DUTCH_WEATHER_DATA_KNMI` | Module 6 | [Get Dataset](https://app.snowflake.com/marketplace/listing/GZSYZ4OONQUO/ddbm-b-v-dutch-weather-data-knmi) |
+| **Snowflake Public Data (Free)** | Snowflake | `SNOWFLAKE_PUBLIC_DATA_FREE` | Module 6 | [Get Dataset](https://app.snowflake.com/marketplace/listing/GZTSZ290BV255/snowflake-public-data-products-snowflake-public-data-free) |
 
 > **💡 Tip:** Click "Get" on each listing, accept terms, and use the suggested database name. Data appears instantly — no ETL required!
 
@@ -219,7 +219,7 @@ You should see 3 schemas and 5 tables.
 
 This is where Snowflake shines. We'll fetch data directly from external APIs **without any external tools**: no Python scripts on your laptop, no AWS Lambda, no Azure Functions.
 
-> **💡 Also available on Marketplace:** The RDW vehicle data is also available via [Snowflake Marketplace](https://app.snowflake.com/marketplace/listing/GZTSZ290BV255) (16.8M vehicles, zero ETL). However, for this lab we use the **API approach** because it includes postal code aggregations and charging infrastructure data that the Marketplace dataset doesn't have — both essential for the EV vs Laadpalen correlation analysis.
+> **💡 Also available on Marketplace:** The RDW vehicle data is also available via [Snowflake Marketplace](https://app.snowflake.com/marketplace/listing/GZSYZ4OONQUS/ddbm-b-v-dutch-registered-vehicles-rdw) (16.8M vehicles, zero ETL). However, for this lab we use the **API approach** because it includes postal code aggregations and charging infrastructure data that the Marketplace dataset doesn't have — both essential for the EV vs Laadpalen correlation analysis.
 
 ### 2.1 Create Network Access Rule
 
@@ -1108,14 +1108,14 @@ We'll use two FREE datasets with real Netherlands data:
 1. Navigate to **Data Products** > **Marketplace**
 2. Search for: `Dutch Weather Data (KNMI)`
 3. Select the listing from **DDBM B.V.**:
-   - [Dutch Weather Data (KNMI)](https://app.snowflake.com/marketplace/listing/GZTSZ290BV254)
+   - [Dutch Weather Data (KNMI)](https://app.snowflake.com/marketplace/listing/GZSYZ4OONQUO/ddbm-b-v-dutch-weather-data-knmi)
 4. Click **Get** and accept the terms
 5. Database name: `DUTCH_WEATHER_DATA_KNMI`
 
 **Dataset 2: Climate Watch Emissions Data**
 1. Search for: `Climate Watch`
 2. Select the listing from **Snowflake Public Data Products**:
-   - [Snowflake Public Data (Free)](https://app.snowflake.com/marketplace/listing/GZSTZ4T7RWW)
+   - [Snowflake Public Data (Free)](https://app.snowflake.com/marketplace/listing/GZTSZ290BV255/snowflake-public-data-products-snowflake-public-data-free)
 3. Click **Get** and accept the terms
 4. Database name: `SNOWFLAKE_PUBLIC_DATA_FREE`
 

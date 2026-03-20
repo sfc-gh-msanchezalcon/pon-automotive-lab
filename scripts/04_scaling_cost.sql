@@ -15,14 +15,10 @@ USE DATABASE PON_EV_LAB;
 -- Creates a warehouse that automatically scales for concurrent users.
 -- No cluster management, no spin-up wait times.
 
-CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
-    WAREHOUSE_SIZE = 'SMALL'
-    AUTO_SUSPEND = 60                -- Suspend after 1 minute idle
-    AUTO_RESUME = TRUE               -- Resume instantly on query
-    MIN_CLUSTER_COUNT = 1            -- Start with 1 cluster
-    MAX_CLUSTER_COUNT = 3            -- Scale to 3 for concurrent users
-    SCALING_POLICY = 'STANDARD'      -- Scale based on queue depth
-    INITIALLY_SUSPENDED = TRUE
+ALTER WAREHOUSE PON_ANALYTICS_WH SET
+    MIN_CLUSTER_COUNT = 1
+    MAX_CLUSTER_COUNT = 3
+    SCALING_POLICY = 'STANDARD'
     COMMENT = 'Multi-cluster warehouse for Pon EV Analytics';
 
 -- =============================================================================
@@ -84,11 +80,3 @@ WHERE registration_year >= 2020
 GROUP BY fuel_category, registration_year
 ORDER BY registration_year, vehicle_count DESC;
 
--- =============================================================================
--- Update Dynamic Tables to use our warehouse
--- =============================================================================
-
-ALTER DYNAMIC TABLE CURATED.VEHICLES_WITH_FUEL SET WAREHOUSE = PON_ANALYTICS_WH;
-ALTER DYNAMIC TABLE CURATED.CHARGING_BY_AREA SET WAREHOUSE = PON_ANALYTICS_WH;
-ALTER DYNAMIC TABLE ANALYTICS.EV_GROWTH_TRENDS SET WAREHOUSE = PON_ANALYTICS_WH;
-ALTER DYNAMIC TABLE ANALYTICS.EV_YOY_GROWTH SET WAREHOUSE = PON_ANALYTICS_WH;

@@ -63,10 +63,17 @@ CREATE TABLE IF NOT EXISTS VEHICLES_BY_POSTCODE_RAW (
     postcode STRING COMMENT '4-digit postal code',
     voertuigsoort STRING COMMENT 'Vehicle type (Personenauto, Bedrijfsauto, etc.)',
     brandstof STRING COMMENT 'Fuel type: B=Benzine, D=Diesel, E=Electric',
-    extern_oplaadbaar STRING COMMENT 'Plug-in capable: Y/N',
+    extern_oplaadbaar STRING COMMENT 'Plug-in capable: J/N',
     aantal INT COMMENT 'Number of vehicles',
     raw_json VARIANT COMMENT 'Complete JSON record from API'
 );
+
+-- Create the analytics warehouse (used by all subsequent modules)
+CREATE OR REPLACE WAREHOUSE PON_ANALYTICS_WH
+    WAREHOUSE_SIZE = 'SMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    COMMENT = 'Warehouse for Pon EV Analytics';
 
 -- Verify setup
 SHOW SCHEMAS IN DATABASE PON_EV_LAB;

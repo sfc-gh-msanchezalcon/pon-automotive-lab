@@ -10,6 +10,7 @@ external APIs directly from SQL without any external tools.
 
 USE DATABASE PON_EV_LAB;
 USE SCHEMA RAW;
+USE WAREHOUSE PON_ANALYTICS_WH;
 
 -- =============================================================================
 -- STEP 1: Network Configuration
@@ -70,6 +71,32 @@ def fetch_data(dataset_id, row_limit, row_offset):
     return response.json()
 $$;
 
+CREATE OR REPLACE FUNCTION FETCH_RDW_DATA(
+    dataset_id STRING,
+    row_limit INT,
+    row_offset INT,
+    order_col STRING
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('requests')
+EXTERNAL_ACCESS_INTEGRATIONS = (rdw_api_access)
+HANDLER = 'fetch_data'
+COMMENT = 'Fetches paginated data from RDW Open Data API with ordering'
+AS $$
+import requests
+
+def fetch_data(dataset_id, row_limit, row_offset, order_col):
+    url = f"https://opendata.rdw.nl/resource/{dataset_id}.json"
+    params = {"$limit": row_limit, "$offset": row_offset}
+    if order_col:
+        params["$order"] = order_col
+    response = requests.get(url, params=params, timeout=60)
+    response.raise_for_status()
+    return response.json()
+$$;
+
 -- =============================================================================
 -- STEP 3: Test API Connection
 -- =============================================================================
@@ -91,7 +118,7 @@ WITH offsets AS (
     FROM TABLE(GENERATOR(ROWCOUNT => 50))
 ),
 api_data AS (
-    SELECT FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val) AS data
+    SELECT FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val, 'kenteken') AS data
     FROM offsets
 )
 SELECT 
@@ -104,16 +131,16 @@ SELECT
 FROM api_data, LATERAL FLATTEN(input => data) f;
 
 -- =============================================================================
--- STEP 5: Load Fuel Data (150,000 records for better join coverage)
+-- STEP 5: Load Fuel Data (50,000 records for better join coverage)
 -- =============================================================================
 
 INSERT INTO VEHICLES_FUEL_RAW (kenteken, brandstof_omschrijving, raw_json)
 WITH offsets AS (
     SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
-    FROM TABLE(GENERATOR(ROWCOUNT => 150))
+    FROM TABLE(GENERATOR(ROWCOUNT => 50))
 ),
 api_data AS (
-    SELECT FETCH_RDW_DATA('8ys7-d773', 1000, offset_val) AS data
+    SELECT FETCH_RDW_DATA('8ys7-d773', 1000, offset_val, 'kenteken') AS data
     FROM offsets
 )
 SELECT 
@@ -160,7 +187,7 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 -- STEP 8: Load Vehicles by Postcode (KEY dataset for regional analysis)
 -- =============================================================================
 -- This is the critical dataset for answering "which region has fastest EV growth"
--- Contains: postcode, vehicle type, fuel type (B/D/E), plug-in capable (Y/N), count
+-- Contains: postcode, vehicle type, fuel type (B/D/E), plug-in capable (J/N), count
 
 INSERT INTO VEHICLES_BY_POSTCODE_RAW 
     (postcode, voertuigsoort, brandstof, extern_oplaadbaar, aantal, raw_json)

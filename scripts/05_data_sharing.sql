@@ -34,6 +34,9 @@ GRANT SELECT ON TABLE ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_DEALER_SHARE;
 -- Share year-over-year metrics
 GRANT SELECT ON TABLE ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHARE;
 
+-- Share infrastructure correlation
+GRANT SELECT ON TABLE ANALYTICS.EV_INFRASTRUCTURE_CORRELATION TO SHARE PON_DEALER_SHARE;
+
 -- =============================================================================
 -- Verify Share Configuration
 -- =============================================================================

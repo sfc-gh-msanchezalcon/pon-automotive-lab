@@ -130,7 +130,7 @@ with tab1:
             FROM PON_EV_LAB.CURATED.EV_BY_REGION
             WHERE total_vehicles > 10000
             ORDER BY ev_percentage DESC
-            LIMIT 15
+            LIMIT 10
         """).to_pandas()
         
         df_region['Region'] = df_region['POSTAL_AREA'].apply(get_region_name)
@@ -173,12 +173,11 @@ with tab2:
         
         df_corr['Region'] = df_corr['POSTAL_AREA'].apply(get_region_name)
         
-        st.markdown("**EVs vs Charging Points (Laadpalen) by Region**")
-        chart_data = df_corr[['Region', 'ELECTRIC_VEHICLES', 'CHARGING_POINTS']].copy()
-        chart_data.columns = ['Region', 'Electric Vehicles (÷100)', 'Charging Points']
-        chart_data['Electric Vehicles (÷100)'] = chart_data['Electric Vehicles (÷100)'] / 100
-        st.bar_chart(chart_data.set_index('Region'))
-        st.caption("Note: EV count divided by 100 for scale comparison")
+        st.markdown("**EV Adoption Rate vs Charging Infrastructure**")
+        chart_data = df_corr[['Region', 'EV_PERCENTAGE', 'CHARGING_POINTS']].copy()
+        chart_data.columns = ['Region', 'EV Adoption %', 'Charging Points']
+        st.scatter_chart(chart_data, x='EV Adoption %', y='Charging Points')
+        st.caption("Each dot = a region. Higher EV adoption should correlate with more charging points.")
         
     with col2:
         st.markdown('<p class="section-header">Key Findings</p>', unsafe_allow_html=True)
@@ -211,38 +210,38 @@ with tab2:
         SELECT 
             postal_area,
             electric_vehicles,
-            COALESCE(charging_points, 0) as charging_points,
+            charging_points,
             ev_percentage,
             evs_per_charging_point
         FROM PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
-        ORDER BY electric_vehicles DESC
+        WHERE charging_points > 0
+        ORDER BY evs_per_charging_point DESC
         LIMIT 20
     """).to_pandas()
     
     df_table['Region'] = df_table['POSTAL_AREA'].apply(get_region_name)
-    df_table['Charging Points'] = df_table['CHARGING_POINTS'].apply(lambda x: int(x) if x > 0 else 'No data')
-    df_table['EVs per Charger'] = df_table['EVS_PER_CHARGING_POINT'].apply(lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else 'N/A')
-    df_table = df_table[['Region', 'ELECTRIC_VEHICLES', 'Charging Points', 'EV_PERCENTAGE', 'EVs per Charger']]
+    df_table['EVs per Charger'] = df_table['EVS_PER_CHARGING_POINT'].apply(lambda x: f"{x:,.1f}" if pd.notna(x) else '—')
+    df_table = df_table[['Region', 'ELECTRIC_VEHICLES', 'CHARGING_POINTS', 'EV_PERCENTAGE', 'EVs per Charger']]
     df_table.columns = ['Region', 'EVs', 'Charging Points', 'EV %', 'EVs per Charger']
     st.dataframe(df_table, use_container_width=True)
-    st.caption("Top 20 regions by EV count. 'No data' = charging infrastructure data not available for this region.")
+    st.caption("Top 20 regions ranked by infrastructure gap (EVs per charging point). Only regions with charging data shown.")
 
 # ============ TAB 3: TRENDS & INSIGHTS ============
 with tab3:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown('<p class="section-header">EV Registrations Over Time</p>', unsafe_allow_html=True)
-        st.caption("Yearly EV registrations from RDW vehicle data")
+        st.markdown('<p class="section-header">EV Share of Registrations Over Time</p>', unsafe_allow_html=True)
+        st.caption("Percentage of registered vehicles that are electric — based on 50K vehicle sample")
         
         df_growth = session.sql("""
             SELECT registration_year as "Year",
-                   ev_count as "EV Registrations"
+                   ev_share_percent as "EV Share %"
             FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
             WHERE registration_year >= 2015
             ORDER BY registration_year
         """).to_pandas()
-        st.bar_chart(df_growth.set_index('Year')['EV Registrations'])
+        st.bar_chart(df_growth.set_index('Year')['EV Share %'])
     
     with col2:
         st.markdown('<p class="section-header">Year-over-Year Growth</p>', unsafe_allow_html=True)
@@ -254,10 +253,16 @@ with tab3:
             ORDER BY registration_year DESC
         """).to_pandas()
         
-        for _, row in df_yoy.iterrows():
-            growth = row['YOY_GROWTH_PERCENT']
-            delta = f"{'+' if growth and growth > 0 else ''}{growth}%" if growth else "—"
-            st.metric(f"{int(row['REGISTRATION_YEAR'])}", f"{int(row['EV_COUNT']):,} EVs", delta)
+        df_yoy = df_yoy.sort_values('REGISTRATION_YEAR', ascending=False).reset_index(drop=True)
+        for i, row in df_yoy.iterrows():
+            share = row['EV_SHARE_PERCENT'] if pd.notna(row['EV_SHARE_PERCENT']) else 0
+            if i < len(df_yoy) - 1:
+                prev = df_yoy.iloc[i+1]['EV_SHARE_PERCENT'] or 0
+                pp = round(share - prev, 2)
+                delta = f"{'+' if pp >= 0 else ''}{pp} pp"
+            else:
+                delta = None
+            st.metric(f"{int(row['REGISTRATION_YEAR'])}", f"{share}% EV share", delta)
     
     st.markdown("---")
     
@@ -351,20 +356,30 @@ with tab4:
             
             with col2:
                 st.markdown("**Key Finding**")
-                top_region = df_weather_ev.iloc[0]
-                bottom_region = df_weather_ev.iloc[-1]
+                top_ev_region = df_weather_ev.iloc[0]
+                mildest_region = df_weather_ev.loc[df_weather_ev['TOTAL_FREEZING_HOURS'].idxmin()]
+                harshest_region = df_weather_ev.loc[df_weather_ev['TOTAL_FREEZING_HOURS'].idxmax()]
                 
-                st.metric("Highest EV Share", f"{top_region['CLIMATE_REGION']}", f"{top_region['EV_SHARE_PCT']}%")
-                st.metric("Fewest Freezing Hours", f"{top_region['TOTAL_FREEZING_HOURS']:,.0f} hrs")
-                st.metric("Lowest EV Share", f"{bottom_region['CLIMATE_REGION']}", f"{bottom_region['EV_SHARE_PCT']}%")
+                st.metric("Highest EV Share", f"{top_ev_region['CLIMATE_REGION']}", f"{top_ev_region['EV_SHARE_PCT']}%")
+                st.metric("Mildest Climate", f"{mildest_region['CLIMATE_REGION']}", f"{mildest_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hrs")
+                st.metric("Harshest Climate", f"{harshest_region['CLIMATE_REGION']}", f"{harshest_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hrs")
                 
-                st.success(f"""
-                **✅ Hypothesis Confirmed**
-                
-                **{top_region['CLIMATE_REGION']}** has the mildest climate ({top_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hours) AND highest EV adoption ({top_region['EV_SHARE_PCT']}%).
-                
-                **Implication:** Target EV marketing in mild-climate regions first.
-                """)
+                if top_ev_region['CLIMATE_REGION'] == mildest_region['CLIMATE_REGION']:
+                    st.success(f"""
+                    **✅ Hypothesis Confirmed**
+                    
+                    **{mildest_region['CLIMATE_REGION']}** has fewest freezing hours ({mildest_region['TOTAL_FREEZING_HOURS']:,.0f}) AND highest EV adoption ({top_ev_region['EV_SHARE_PCT']}%).
+                    
+                    **Implication:** Target EV marketing in mild-climate regions first.
+                    """)
+                else:
+                    st.warning(f"""
+                    **⚠️ Hypothesis Partially Supported**
+                    
+                    **{top_ev_region['CLIMATE_REGION']}** has highest EV adoption ({top_ev_region['EV_SHARE_PCT']}%) but **{mildest_region['CLIMATE_REGION']}** has mildest climate.
+                    
+                    Other factors (urbanization, income) may dominate.
+                    """)
             
             st.markdown("---")
             st.dataframe(df_weather_ev.rename(columns={
@@ -499,11 +514,12 @@ with tab4:
         if has_monthly_weather:
             df_monthly = session.sql("""
                 SELECT 
+                    month as month_num,
                     CASE month 
-                        WHEN 1 THEN 'Jan' WHEN 2 THEN 'Feb' WHEN 3 THEN 'Mar'
-                        WHEN 4 THEN 'Apr' WHEN 5 THEN 'May' WHEN 6 THEN 'Jun'
-                        WHEN 7 THEN 'Jul' WHEN 8 THEN 'Aug' WHEN 9 THEN 'Sep'
-                        WHEN 10 THEN 'Oct' WHEN 11 THEN 'Nov' WHEN 12 THEN 'Dec'
+                        WHEN 1 THEN '01-Jan' WHEN 2 THEN '02-Feb' WHEN 3 THEN '03-Mar'
+                        WHEN 4 THEN '04-Apr' WHEN 5 THEN '05-May' WHEN 6 THEN '06-Jun'
+                        WHEN 7 THEN '07-Jul' WHEN 8 THEN '08-Aug' WHEN 9 THEN '09-Sep'
+                        WHEN 10 THEN '10-Oct' WHEN 11 THEN '11-Nov' WHEN 12 THEN '12-Dec'
                     END as "Month",
                     avg_temp_c as "Avg Temp (°C)",
                     pct_freezing as "% Freezing",
@@ -516,10 +532,11 @@ with tab4:
             
             with col1:
                 st.markdown("**Monthly Temperature & Freezing Risk**")
-                st.line_chart(df_monthly.set_index('Month')[['Avg Temp (°C)']])
+                df_sorted = df_monthly.sort_values('MONTH_NUM')
+                st.line_chart(df_sorted.set_index('Month')[['Avg Temp (°C)']])
                 
                 st.markdown("**Freezing Risk by Month**")
-                st.bar_chart(df_monthly.set_index('Month')[['% Freezing']])
+                st.bar_chart(df_sorted.set_index('Month')[['% Freezing']])
             
             with col2:
                 st.markdown("**Insights for PON**")
@@ -604,14 +621,14 @@ with tab5:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown('<p class="section-header">Fuel Distribution by Region</p>', unsafe_allow_html=True)
-        st.caption("Electric vs Petrol vs Diesel by region")
+        st.markdown('<p class="section-header">Fuel Type Share by Region (%)</p>', unsafe_allow_html=True)
+        st.caption("Percentage breakdown: Electric vs Petrol vs Diesel")
         
         df_fuel = session.sql("""
             SELECT postal_area,
-                   electric_vehicles as "Electric",
-                   petrol_vehicles as "Petrol", 
-                   diesel_vehicles as "Diesel"
+                   ROUND(100.0 * electric_vehicles / NULLIF(total_vehicles, 0), 1) as "Electric %",
+                   ROUND(100.0 * petrol_vehicles / NULLIF(total_vehicles, 0), 1) as "Petrol %",
+                   ROUND(100.0 * diesel_vehicles / NULLIF(total_vehicles, 0), 1) as "Diesel %"
             FROM PON_EV_LAB.CURATED.EV_BY_REGION
             WHERE total_vehicles > 50000
             ORDER BY electric_vehicles DESC
@@ -619,7 +636,7 @@ with tab5:
         """).to_pandas()
         
         df_fuel['Region'] = df_fuel['POSTAL_AREA'].apply(get_region_name)
-        st.bar_chart(df_fuel.set_index('Region')[['Electric', 'Petrol', 'Diesel']])
+        st.bar_chart(df_fuel.set_index('Region')[['Electric %', 'Petrol %', 'Diesel %']])
     
     with col2:
         st.markdown('<p class="section-header">National Totals</p>', unsafe_allow_html=True)
@@ -636,6 +653,12 @@ with tab5:
         st.metric("Electric (E)", f"{fuel_totals['ELECTRIC']:,}", f"{round(100*fuel_totals['ELECTRIC']/fuel_totals['TOTAL'],1)}%")
         st.metric("Petrol (B)", f"{fuel_totals['PETROL']:,}", f"{round(100*fuel_totals['PETROL']/fuel_totals['TOTAL'],1)}%")
         st.metric("Diesel (D)", f"{fuel_totals['DIESEL']:,}", f"{round(100*fuel_totals['DIESEL']/fuel_totals['TOTAL'],1)}%")
+    
+    st.markdown("---")
+    st.markdown('<p class="section-header">EV Adoption Rate by Region</p>', unsafe_allow_html=True)
+    st.caption("Zoomed in on electric vehicle share — the key metric for Pon's EV strategy")
+    df_ev_focus = df_fuel[['Region', 'Electric %']].sort_values('Electric %', ascending=False)
+    st.bar_chart(df_ev_focus.set_index('Region')['Electric %'])
         
 
 
@@ -772,7 +795,10 @@ with tab7:
                 ORDER BY total_vehicles DESC
             """).to_pandas()
             
-            st.bar_chart(df_fleet.set_index('BRAND')[['TOTAL_VEHICLES', 'LOW_BATTERY_COUNT', 'CHARGING_COUNT']])
+            df_fleet_pct = df_fleet.copy()
+            df_fleet_pct['Low Battery %'] = round(100 * df_fleet_pct['LOW_BATTERY_COUNT'] / df_fleet_pct['TOTAL_VEHICLES'].replace(0, 1), 1)
+            df_fleet_pct['Charging %'] = round(100 * df_fleet_pct['CHARGING_COUNT'] / df_fleet_pct['TOTAL_VEHICLES'].replace(0, 1), 1)
+            st.bar_chart(df_fleet_pct.set_index('BRAND')[['Low Battery %', 'Charging %']])
             
             st.markdown("### Vehicle Status")
             df_vehicles = session.sql("""
@@ -853,6 +879,7 @@ with tab7:
 # ============ FOOTER ============
 st.markdown("---")
 
+st.caption("📊 _Dashboard built on a 50K vehicle sample from RDW Open Data (16.7M total). Percentages and growth rates reflect real trends. Dynamic Tables auto-refresh hourly. Scale to full dataset by adjusting ROWCOUNT parameter._")
 col1, col2 = st.columns(2)
 with col1:
     st.caption("**Data:** RDW Open Data (API + Marketplace) | KNMI Weather | Climate Watch")

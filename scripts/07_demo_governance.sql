@@ -115,7 +115,7 @@ RESOURCE MONITOR:
 - "Databricks requires custom scripts for this level of control"
 
 DATA SHARING:
-- "We're sharing 4 analytics tables with our dealer network"
+- "We're sharing 3 analytics tables with our dealer network"
 - "This is ZERO-COPY sharing - dealers query our live data"
 - "No ETL, no sync jobs, no stale data"
 - "When our Dynamic Tables refresh, dealers see fresh data immediately"

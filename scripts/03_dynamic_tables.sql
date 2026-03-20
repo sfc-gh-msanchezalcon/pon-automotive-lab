@@ -9,6 +9,7 @@ No external orchestration required - just SQL.
 */
 
 USE DATABASE PON_EV_LAB;
+USE WAREHOUSE PON_ANALYTICS_WH;
 
 -- =============================================================================
 -- CURATED LAYER: EV Adoption by Region (KEY business metric)
@@ -166,37 +167,6 @@ FROM yearly_totals
 ORDER BY registration_year;
 
 -- =============================================================================
--- ANALYTICS LAYER: EV Infrastructure Correlation (KEY business question!)
--- =============================================================================
--- This DIRECTLY answers the PDF question: "zie je dat terug in aantal 
--- beschikbare laadpalen?" (do you see EV growth reflected in charging points?)
--- Correlates EV adoption by region with charging points (laadpalen) by region
-
-CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
-    TARGET_LAG = '1 hour'
-    WAREHOUSE = PON_ANALYTICS_WH
-    COMMENT = 'Correlation between EV adoption and charging infrastructure (laadpalen) per PDF requirements'
-AS
-SELECT 
-    e.postal_area,
-    e.electric_vehicles,
-    e.ev_percentage,
-    COALESCE(l.total_laadpalen, 0) AS charging_points,
-    CASE 
-        WHEN l.total_laadpalen > 0 
-        THEN ROUND(e.electric_vehicles / l.total_laadpalen, 0) 
-    END AS evs_per_charging_point
-FROM CURATED.EV_BY_REGION e
-LEFT JOIN (
-    SELECT 
-        LEFT(postcode, 2) AS postal_area,
-        SUM(aantal) AS total_laadpalen
-    FROM ANALYTICS.LAADPALEN_PER_POSTCODE
-    GROUP BY LEFT(postcode, 2)
-) l ON e.postal_area = l.postal_area
-WHERE e.total_vehicles > 5000;
-
--- =============================================================================
 -- TARGET MODEL: Brandstof per Postcode per Datum (from PDF requirements)
 -- =============================================================================
 -- Answers: "How has EV adoption evolved over time by region?"
@@ -272,6 +242,38 @@ FROM RAW.VEHICLES_BY_POSTCODE_RAW
 WHERE voertuigsoort = 'Personenauto'
   AND postcode IS NOT NULL
 GROUP BY 1, 2;
+
+-- =============================================================================
+-- ANALYTICS LAYER: EV Infrastructure Correlation (KEY business question!)
+-- =============================================================================
+-- This DIRECTLY answers the PDF question: "zie je dat terug in aantal 
+-- beschikbare laadpalen?" (do you see EV growth reflected in charging points?)
+-- Correlates EV adoption by region with charging points (laadpalen) by region
+-- NOTE: Must be created AFTER LAADPALEN_PER_POSTCODE (dependency)
+
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Correlation between EV adoption and charging infrastructure (laadpalen) per PDF requirements'
+AS
+SELECT 
+    e.postal_area,
+    e.electric_vehicles,
+    e.ev_percentage,
+    COALESCE(l.total_laadpalen, 0) AS charging_points,
+    CASE 
+        WHEN l.total_laadpalen > 0 
+        THEN ROUND(e.electric_vehicles / l.total_laadpalen, 0) 
+    END AS evs_per_charging_point
+FROM CURATED.EV_BY_REGION e
+LEFT JOIN (
+    SELECT 
+        LEFT(postcode, 2) AS postal_area,
+        SUM(aantal) AS total_laadpalen
+    FROM ANALYTICS.LAADPALEN_PER_POSTCODE
+    GROUP BY LEFT(postcode, 2)
+) l ON e.postal_area = l.postal_area
+WHERE e.total_vehicles > 5000;
 
 -- =============================================================================
 -- Verify Dynamic Tables

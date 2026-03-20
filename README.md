@@ -147,7 +147,7 @@ Pon's pain points and how Snowflake addresses them:
 |----------------|------------|-------------------|
 | **Business Question**: "Which region has fastest EV growth and does it correlate with charging?" | Module 7 | Dashboard Tab 2 shows EV adoption vs charging infrastructure by region with explicit answer |
 | **RDW Open Data APIs** with pagination (1000 row limit) | Module 2 | Python UDF with External Access handles `$limit` and `$offset` pattern |
-| **Target Model: brandst per postcode per datum** | Module 3 | Dynamic Table `BRANDSTOF_PER_POSTCODE_DATUM` with Postcode, Datum, Brandstof, Aantal |
+| **Target Model: brandst per postcode per datum** | Module 3 | Dynamic Table `BRANDSTOF_PER_POSTCODE_DATUM` (Datum, Brandstof, Aantal) + `BRANDSTOF_PER_POSTCODE` (Postcode, Brandstof, Aantal) — split because RDW does not expose postcode in the kenteken API |
 | **Target Model: Laadpalen per postcode** | Module 3 | Dynamic Table `LAADPALEN_PER_POSTCODE` with Postcode, Aantal |
 | **RAW → CURATED → ANALYTICS** pipeline | Module 3 | Three-schema medallion architecture with Dynamic Tables |
 | **No manual orchestration** | Module 3 | Dynamic Tables with `TARGET_LAG` — no external scheduler needed |
@@ -176,7 +176,7 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic d
 | Dataset | RDW ID | Required Columns (PDF) | Records |
 |---------|--------|------------------------|---------|
 | **Gekentekende_voertuigen** | `m9d7-ebf2` | Kenteken, datum_eerste_tenaamstelling | 50,000 |
-| **Gekentekende_voertuigen_brandstof** | `8ys7-d773` | Kenteken, brandstof_omschrijving | 150,000 |
+| **Gekentekende_voertuigen_brandstof** | `8ys7-d773` | Kenteken, brandstof_omschrijving | 50,000 |
 | **Voertuigen per postcode** | `8wbe-pu7d` | Postcode, Brandstof, Aantal | 46,645 |
 | **Parkeeradres** | `ygq4-hh5q` | parkingaddressreference, zipcode (filter: parkingaddresstype='F') | 3,382 |
 | **SPECIFICATIES PARKEERGEBIED** | `b3us-f26s` | areamanagerid, chargingpointcapacity | 3,139 |
@@ -191,7 +191,7 @@ All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic d
 | **SPECIFICATIES PARKEERGEBIED** | 3,139 | 3,139 | **100%** | Required for laadpalen (charging) correlation |
 | **Parkeeradres** | 3,792 | 3,382 | **89%** | Filtered per PDF: `parkingaddresstype='F'` |
 | **Gekentekende_voertuigen** | 16.7M | 50K | 0.3% | Sampled for time-series (optional analysis) |
-| **Gekentekende_voertuigen_brandstof** | 16.7M | 150K | 0.9% | Sampled for fuel trends (optional analysis) |
+| **Gekentekende_voertuigen_brandstof** | 16.7M | 50K | 0.3% | Sampled for fuel trends (optional analysis) |
 
 **Why this approach:**
 
@@ -231,8 +231,9 @@ Then aggregate `chargingpointcapacity` by `zipcode` from Parkeeradres.
 | 6 | Marketplace Data Enrichment | 15 min |
 | 7 | Streamlit Dashboard | 15 min |
 | 8 | Wrap-up & Discussion | 10 min |
+| **Bonus** | **Cortex Code Pipeline** | 15 min |
 
-**Total: ~2.5 hours**
+**Total: ~2.5 hours** (+ optional bonus)
 
 ## Getting Started
 
@@ -250,14 +251,17 @@ pon-automotive-lab/
 │   ├── banner.svg            ← GitHub banner
 │   └── divider.svg           ← Section divider
 ├── scripts/
-│   ├── 00_complete_setup.sql ← All SQL in one file (facilitator backup)
+│   ├── 00_complete_setup.sql ← All SQL in one file (backup)
 │   ├── 01_setup.sql          ← Module 1: Database and schemas
 │   ├── 02_data_ingestion.sql ← Module 2: External access and UDFs
 │   ├── 03_dynamic_tables.sql ← Module 3: Automated pipelines
 │   ├── 04_scaling_cost.sql   ← Module 4: Warehouses and monitors
 │   ├── 05_data_sharing.sql   ← Module 5: Secure sharing
-│   └── 06_marketplace.sql    ← Module 6: Marketplace data queries
-└── streamlit_app.py          ← Module 7: Dashboard code (copy to Snowsight)
+│   ├── 06_marketplace.sql    ← Module 6: Marketplace data queries
+│   ├── 06_bonus_cortex_code.sql ← Module 9: Bonus Cortex Code pipeline
+│   ├── 07_demo_governance.sql   ← Demo: Governance features
+│   └── 08_reader_account_setup.sql ← Demo: Reader account setup
+└── streamlit_app.py          ← Module 7: Dashboard code
 ```
 
 ## About This Lab

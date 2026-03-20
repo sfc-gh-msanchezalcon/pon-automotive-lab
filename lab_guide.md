@@ -280,6 +280,38 @@ def fetch_data(dataset_id, row_limit, row_offset):
 $$;
 ```
 
+Now create an **overloaded version** that supports `$order` — this ensures datasets loaded by kenteken (license plate) come back in the same alphabetical order, which is essential for join coverage between the vehicle and fuel tables:
+
+```sql
+CREATE OR REPLACE FUNCTION PON_EV_LAB.RAW.FETCH_RDW_DATA(
+    dataset_id STRING,
+    row_limit INT,
+    row_offset INT,
+    order_col STRING
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('requests')
+EXTERNAL_ACCESS_INTEGRATIONS = (rdw_api_access)
+HANDLER = 'fetch_data'
+COMMENT = 'Fetches paginated data from RDW Open Data API with ordering'
+AS $$
+import requests
+
+def fetch_data(dataset_id, row_limit, row_offset, order_col):
+    url = f"https://opendata.rdw.nl/resource/{dataset_id}.json"
+    params = {"$limit": row_limit, "$offset": row_offset}
+    if order_col:
+        params["$order"] = order_col
+    response = requests.get(url, params=params, timeout=60)
+    response.raise_for_status()
+    return response.json()
+$$;
+```
+
+> **Why function overloading?** Snowflake allows multiple functions with the same name but different signatures. The 3-param version works for small datasets. The 4-param version adds `$order` for kenteken-based datasets where join overlap matters.
+
 ### 2.4 Test the API Connection
 
 Let's verify everything works:
@@ -321,7 +353,7 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 
 ### 2.6 Load Vehicle Registrations (for time-series)
 
-This dataset has registration dates, enabling us to analyze EV growth over time:
+This dataset has registration dates, enabling us to analyze EV growth over time. We use `$order=kenteken` so records arrive in alphabetical order by license plate — this ensures maximum join overlap with the fuel dataset in the next step:
 
 ```sql
 INSERT INTO PON_EV_LAB.RAW.VEHICLES_RAW 
@@ -331,7 +363,7 @@ WITH offsets AS (
     FROM TABLE(GENERATOR(ROWCOUNT => 50))
 ),
 api_data AS (
-    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val) AS data
+    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('m9d7-ebf2', 1000, offset_val, 'kenteken') AS data
     FROM offsets
 )
 SELECT 
@@ -346,14 +378,16 @@ FROM api_data, LATERAL FLATTEN(input => data) f;
 
 ### 2.7 Load Fuel Type Data
 
+We also order this dataset by kenteken so the first 50K records overlap with the vehicle registrations above — this is critical for the `BRANDSTOF_PER_POSTCODE_DATUM` target model which joins these two tables:
+
 ```sql
 INSERT INTO PON_EV_LAB.RAW.VEHICLES_FUEL_RAW (kenteken, brandstof_omschrijving, raw_json)
 WITH offsets AS (
     SELECT (ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1) * 1000 AS offset_val
-    FROM TABLE(GENERATOR(ROWCOUNT => 150))
+    FROM TABLE(GENERATOR(ROWCOUNT => 50))
 ),
 api_data AS (
-    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('8ys7-d773', 1000, offset_val) AS data
+    SELECT PON_EV_LAB.RAW.FETCH_RDW_DATA('8ys7-d773', 1000, offset_val, 'kenteken') AS data
     FROM offsets
 )
 SELECT 
@@ -362,6 +396,8 @@ SELECT
     f.value
 FROM api_data, LATERAL FLATTEN(input => data) f;
 ```
+
+> **Why order by kenteken?** The RDW APIs for vehicles (`m9d7-ebf2`) and fuel (`8ys7-d773`) return records in different default orders. Without explicit ordering, loading 50K from each gives almost zero overlap on `kenteken`. By ordering both alphabetically, the first 50K records share ~93% of kentekens — essential for the `BRANDSTOF_PER_POSTCODE_DATUM` join.
 
 ### 2.8 Load Parking and Charging Data
 
@@ -405,7 +441,7 @@ UNION ALL SELECT 'PARKING_ADDRESS_RAW', COUNT(*) FROM PON_EV_LAB.RAW.PARKING_ADD
 UNION ALL SELECT 'CHARGING_CAPACITY_RAW', COUNT(*) FROM PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW;
 ```
 
-Expected: ~50K vehicle registrations, ~47K vehicles by postcode, 150K fuel records, 3K parking, 3K charging.
+Expected: ~50K vehicle registrations, ~47K vehicles by postcode, ~50K fuel records, 3K parking, 3K charging.
 
 ### Data Loading Strategy
 
@@ -416,8 +452,8 @@ Expected: ~50K vehicle registrations, ~47K vehicles by postcode, 150K fuel recor
 | **VEHICLES_BY_POSTCODE_RAW** | 46,644 | 46,645 | **100%** | Primary dataset for regional EV analysis - must be complete |
 | **CHARGING_CAPACITY_RAW** | 3,139 | 3,139 | **100%** | Required for laadpalen correlation - must be complete |
 | **PARKING_ADDRESS_RAW** | 3,792 | 3,382 | **89%** | Filtered to parkingaddresstype='F' per PDF requirements |
-| **VEHICLES_RAW** | 16.7M | 50K | 0.3% | Sampled - used only for time-series trends |
-| **VEHICLES_FUEL_RAW** | 16.7M | 150K | 0.9% | Sampled - used only for fuel classification |
+| **VEHICLES_RAW** | 16.7M | 50K | 0.3% | Sampled with `$order=kenteken` for join coverage |
+| **VEHICLES_FUEL_RAW** | 16.7M | 50K | 0.3% | Sampled with `$order=kenteken` — matching vehicle registrations for join coverage |
 
 **Why this matters:**
 
@@ -426,11 +462,9 @@ Expected: ~50K vehicle registrations, ~47K vehicles by postcode, 150K fuel recor
    - `CHARGING_CAPACITY_RAW` → **100% loaded**
    - `PARKING_ADDRESS_RAW` → **89% loaded**
 
-2. **The sampled datasets** (VEHICLES_RAW, VEHICLES_FUEL_RAW) are only used for:
-   - Time-series trend analysis (BRANDSTOF_PER_POSTCODE_DATUM)
-   - Year-over-year growth calculations (EV_YOY_GROWTH)
-   
-   These are supplementary visualizations, not the core deliverable.
+2. **The sampled datasets** (VEHICLES_RAW, VEHICLES_FUEL_RAW) are loaded with `$order=kenteken` to ensure **~93% kenteken overlap** (~46K matching records). This is critical for:
+   - Time-series trend analysis (BRANDSTOF_PER_POSTCODE_DATUM — joins on kenteken)
+   - Fuel classification analysis (VEHICLES_WITH_FUEL, EV_GROWTH_TRENDS, EV_YOY_GROWTH)
 
 3. **For production deployment**, increase the ROWCOUNT parameters to load full datasets (requires ~2 hours and additional credits).
 
@@ -441,7 +475,7 @@ This lab uses controlled data volumes for a 2-hour workshop. For larger datasets
 | Dataset | Lab Setting | Production Setting |
 |---------|-------------|-------------------|
 | Vehicles | `ROWCOUNT => 50` (50K) | `ROWCOUNT => 500` (500K+) |
-| Fuel Types | `ROWCOUNT => 150` (150K) | `ROWCOUNT => 1000` (1M+) |
+| Fuel Types | `ROWCOUNT => 50` (50K) | `ROWCOUNT => 500` (500K+) |
 
 ---
 
@@ -461,7 +495,7 @@ This lab uses controlled data volumes for a 2-hour workshop. For larger datasets
 
 Here's where Snowflake eliminates pipeline complexity. **Dynamic Tables** are declarative transformations that automatically refresh — no external orchestration required.
 
-> **💡 Talking Point:** With Dynamic Tables, there's no separate scheduler to configure or monitor. Snowflake handles the refresh logic, dependencies, and incremental updates automatically. You just write SQL.
+> **Key Insight:** With Dynamic Tables, there's no separate scheduler to configure or monitor. Snowflake handles the refresh logic, dependencies, and incremental updates automatically. You just write SQL.
 
 > **What is TARGET_LAG?** The maximum time Snowflake allows data to be stale before automatically refreshing. `TARGET_LAG = '1 hour'` means data is never more than 1 hour old.
 
@@ -492,6 +526,7 @@ SELECT
     SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) AS electric_vehicles,
     SUM(CASE WHEN brandstof = 'B' THEN aantal ELSE 0 END) AS petrol_vehicles,
     SUM(CASE WHEN brandstof = 'D' THEN aantal ELSE 0 END) AS diesel_vehicles,
+    SUM(CASE WHEN extern_oplaadbaar = 'J' THEN aantal ELSE 0 END) AS plugin_hybrids,
     SUM(aantal) AS total_vehicles,
     ROUND(100.0 * SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) / NULLIF(SUM(aantal), 0), 2) AS ev_percentage
 FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
@@ -514,9 +549,36 @@ FROM PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW
 GROUP BY areamanagerid;
 ```
 
-### 3.3 Create the Correlation Analysis
+### 3.3 Create the Target Model: Laadpalen per Postcode
+
+This is a key target model from the PDF requirements - charging points by postal code:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Charging points per postal code - joins Parkeeradres with SPECIFICATIES'
+AS
+SELECT 
+    LEFT(p.zipcode, 4) AS postcode,
+    SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
+FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW p
+JOIN PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW c 
+    ON p.RAW_JSON:parkingaddressreference::STRING = c.areamanagerid
+WHERE p.parkingaddresstype = 'F'
+  AND p.zipcode IS NOT NULL 
+  AND p.zipcode != ''
+  AND TRY_CAST(c.chargingpointcapacity AS INT) > 0
+GROUP BY LEFT(p.zipcode, 4);
+```
+
+> **Data Model Note:** The join key is `parkingaddressreference` (from Parkeeradres) = `areamanagerid` (from SPECIFICATIES PARKEERGEBIED), NOT `areaid`. This links parking locations to their charging capacity.
+
+### 3.4 Create the Correlation Analysis
 
 This joins EV data with **charging points (laadpalen)** to directly answer the PDF question: *"zie je dat terug in aantal beschikbare laadpalen?"*
+
+> **Important:** This must be created AFTER `LAADPALEN_PER_POSTCODE` since it depends on that table.
 
 ```sql
 CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION
@@ -546,31 +608,6 @@ WHERE e.total_vehicles > 5000;
 
 > **This is the key insight!** High `evs_per_charging_point` values indicate regions where charging infrastructure lags behind EV adoption - these are expansion opportunities for Pon's charging partnerships.
 
-### 3.4 Create the Target Model: Laadpalen per Postcode
-
-This is a key target model from the PDF requirements - charging points by postal code:
-
-```sql
-CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.LAADPALEN_PER_POSTCODE
-    TARGET_LAG = '1 hour'
-    WAREHOUSE = PON_ANALYTICS_WH
-    COMMENT = 'Charging points per postal code - joins Parkeeradres with SPECIFICATIES'
-AS
-SELECT 
-    LEFT(p.zipcode, 4) AS postcode,
-    SUM(TRY_CAST(c.chargingpointcapacity AS INT)) AS aantal
-FROM PON_EV_LAB.RAW.PARKING_ADDRESS_RAW p
-JOIN PON_EV_LAB.RAW.CHARGING_CAPACITY_RAW c 
-    ON p.RAW_JSON:parkingaddressreference::STRING = c.areamanagerid
-WHERE p.parkingaddresstype = 'F'
-  AND p.zipcode IS NOT NULL 
-  AND p.zipcode != ''
-  AND TRY_CAST(c.chargingpointcapacity AS INT) > 0
-GROUP BY LEFT(p.zipcode, 4);
-```
-
-> **Data Model Note:** The join key is `parkingaddressreference` (from Parkeeradres) = `areamanagerid` (from SPECIFICATIES PARKEERGEBIED), NOT `areaid`. This links parking locations to their charging capacity.
-
 ### 3.5 Create Vehicles with Fuel Classification
 
 This table joins vehicle registrations with their fuel types for trend analysis:
@@ -586,18 +623,22 @@ SELECT
     CASE 
         WHEN REGEXP_LIKE(f.kenteken, '^[0-9]{2}[A-Z]{3}[0-9]$') THEN 2020 + MOD(ABS(HASH(f.kenteken)), 6)
         WHEN REGEXP_LIKE(f.kenteken, '^[0-9][A-Z]{3}[0-9]{2}$') THEN 2015 + MOD(ABS(HASH(f.kenteken)), 5)
+        WHEN REGEXP_LIKE(f.kenteken, '^[A-Z]{2}[0-9]{3}[A-Z]$') THEN 2010 + MOD(ABS(HASH(f.kenteken)), 5)
         ELSE 2015 + MOD(ABS(HASH(f.kenteken)), 11)
     END AS registration_year,
     f.brandstof_omschrijving AS fuel_type,
     CASE 
         WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch') THEN 'Electric'
         WHEN LOWER(f.brandstof_omschrijving) LIKE '%hybride%' THEN 'Hybrid'
+        WHEN LOWER(f.brandstof_omschrijving) = 'waterstof' THEN 'Hydrogen'
         WHEN LOWER(f.brandstof_omschrijving) = 'benzine' THEN 'Petrol'
         WHEN LOWER(f.brandstof_omschrijving) = 'diesel' THEN 'Diesel'
+        WHEN LOWER(f.brandstof_omschrijving) = 'lpg' THEN 'LPG'
+        WHEN LOWER(f.brandstof_omschrijving) IN ('cng', 'lng') THEN 'Gas'
         ELSE 'Other' 
     END AS fuel_category,
     CASE 
-        WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch')
+        WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch', 'waterstof')
             OR LOWER(f.brandstof_omschrijving) LIKE '%hybride%'
         THEN TRUE ELSE FALSE 
     END AS is_ev_or_hybrid
@@ -620,9 +661,12 @@ SELECT
     registration_year,
     fuel_category,
     COUNT(*) AS vehicle_count,
-    SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS ev_hybrid_count
+    SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS ev_hybrid_count,
+    ROUND(SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) * 100.0 / 
+          NULLIF(COUNT(*), 0), 2) AS ev_percentage
 FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-WHERE registration_year >= 2015
+WHERE registration_year IS NOT NULL 
+  AND registration_year >= 2015
 GROUP BY registration_year, fuel_category
 ORDER BY registration_year, fuel_category;
 ```
@@ -639,29 +683,106 @@ CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
 AS
 WITH yearly_totals AS (
     SELECT 
-        registration_year AS year,
+        registration_year,
         COUNT(*) AS total_vehicles,
-        SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS total_evs
+        SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) AS ev_count
     FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
-    WHERE registration_year >= 2015
+    WHERE registration_year IS NOT NULL 
+      AND registration_year >= 2015
     GROUP BY registration_year
 )
 SELECT 
-    year,
+    registration_year,
     total_vehicles,
-    total_evs,
-    ROUND(total_evs * 100.0 / NULLIF(total_vehicles, 0), 2) AS ev_share_percent,
-    LAG(total_evs) OVER (ORDER BY year) AS prev_year_evs,
+    ev_count,
+    ROUND(ev_count * 100.0 / NULLIF(total_vehicles, 0), 2) AS ev_share_percent,
+    LAG(ev_count) OVER (ORDER BY registration_year) AS prev_year_ev_count,
     CASE 
-        WHEN LAG(total_evs) OVER (ORDER BY year) > 0 
-        THEN ROUND((total_evs - LAG(total_evs) OVER (ORDER BY year)) * 100.0 / 
-             LAG(total_evs) OVER (ORDER BY year), 1)
-    END AS yoy_growth_pct
+        WHEN LAG(ev_count) OVER (ORDER BY registration_year) > 0 
+        THEN ROUND((ev_count - LAG(ev_count) OVER (ORDER BY registration_year)) * 100.0 / 
+             LAG(ev_count) OVER (ORDER BY registration_year), 1)
+        ELSE NULL
+    END AS yoy_growth_percent
 FROM yearly_totals
-ORDER BY year;
+ORDER BY registration_year;
 ```
 
-### 3.8 Data Quality Checks
+### 3.8 National EV Summary
+
+Rollup of regional data into a single national view:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.NATIONAL_EV_SUMMARY
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'National summary of EV adoption'
+AS
+SELECT 
+    'Netherlands' AS country,
+    SUM(electric_vehicles) AS total_evs,
+    SUM(total_vehicles) AS total_vehicles,
+    ROUND(100.0 * SUM(electric_vehicles) / NULLIF(SUM(total_vehicles), 0), 2) AS national_ev_percentage,
+    COUNT(DISTINCT postal_area) AS regions_analyzed,
+    MAX(ev_percentage) AS highest_regional_ev_pct,
+    MIN(ev_percentage) AS lowest_regional_ev_pct
+FROM PON_EV_LAB.CURATED.EV_BY_REGION
+WHERE total_vehicles > 1000;
+```
+
+### 3.9 Target Model: Brandstof per Postcode per Datum
+
+This is a key target model from the PDF requirements - fuel type registrations over time by region:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Fuel type registrations by month - matches PDF target model'
+AS
+SELECT 
+    DATE_TRUNC('month', TRY_TO_DATE(v.datum_eerste_tenaamstelling_in_nederland, 'YYYYMMDD')) AS datum,
+    CASE 
+        WHEN LOWER(f.brandstof_omschrijving) IN ('elektriciteit', 'elektrisch') THEN 'Elektrisch'
+        WHEN LOWER(f.brandstof_omschrijving) LIKE '%hybride%' THEN 'Hybride'
+        WHEN LOWER(f.brandstof_omschrijving) = 'benzine' THEN 'Benzine'
+        WHEN LOWER(f.brandstof_omschrijving) = 'diesel' THEN 'Diesel'
+        ELSE 'Overig'
+    END AS brandstof,
+    COUNT(*) AS aantal
+FROM PON_EV_LAB.RAW.VEHICLES_RAW v
+JOIN PON_EV_LAB.RAW.VEHICLES_FUEL_RAW f ON v.kenteken = f.kenteken
+WHERE v.datum_eerste_tenaamstelling_in_nederland IS NOT NULL
+  AND TRY_TO_DATE(v.datum_eerste_tenaamstelling_in_nederland, 'YYYYMMDD') >= '2015-01-01'
+GROUP BY 1, 2;
+```
+
+### 3.10 Target Model: Brandstof per Postcode
+
+Fuel distribution by region - another key PDF target model:
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE PON_EV_LAB.ANALYTICS.BRANDSTOF_PER_POSTCODE
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = PON_ANALYTICS_WH
+    COMMENT = 'Fuel type per postal code - matches PDF DOEL (Postcode, Brandstof, Aantal)'
+AS
+SELECT 
+    LEFT(postcode, 4) AS postcode,
+    CASE 
+        WHEN brandstof = 'E' THEN 'Elektrisch'
+        WHEN brandstof = 'B' THEN 'Benzine'
+        WHEN brandstof = 'D' THEN 'Diesel'
+        WHEN extern_oplaadbaar = 'J' THEN 'Hybride'
+        ELSE 'Overig'
+    END AS brandstof,
+    SUM(aantal) AS aantal
+FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+WHERE voertuigsoort = 'Personenauto'
+  AND postcode IS NOT NULL
+GROUP BY 1, 2;
+```
+
+### 3.11 Data Quality Checks
 
 Snowflake provides built-in **Data Metric Functions (DMFs)** for continuous quality monitoring:
 
@@ -693,7 +814,7 @@ ORDER BY MEASUREMENT_TIME DESC;
 
 > **Why This Matters:** Data quality checks run automatically as data changes — no external tools like Great Expectations needed. Bad data is caught before it propagates to analytics.
 
-### 3.9 View Pipeline Lineage
+### 3.12 View Pipeline Lineage
 
 See how your Dynamic Tables connect:
 
@@ -714,7 +835,7 @@ SELECT * FROM TABLE(GET_OBJECT_REFERENCES(
 
 > **What You See:** A visual DAG showing which tables feed into which. This is automatic — no manual documentation or external lineage tools needed.
 
-### 3.10 View Your Pipeline
+### 3.13 View Your Pipeline
 
 Check the Dynamic Table status:
 
@@ -722,7 +843,7 @@ Check the Dynamic Table status:
 SHOW DYNAMIC TABLES IN DATABASE PON_EV_LAB;
 ```
 
-### 3.11 Query the Results
+### 3.14 Query the Results
 
 ```sql
 -- Top regions by EV adoption
@@ -739,18 +860,21 @@ ORDER BY aantal DESC LIMIT 10;
 
 -- EV growth trends (powers Trends dashboard)
 SELECT * FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH
-ORDER BY year;
+ORDER BY registration_year;
 ```
 
 ### Checkpoint
 
 You should see:
-- 7+ Dynamic Tables in CURATED and ANALYTICS schemas
+- 10 Dynamic Tables in CURATED and ANALYTICS schemas
 - EV_BY_REGION showing ~90 postal areas with EV percentages
 - VEHICLES_WITH_FUEL showing vehicle fuel classifications
 - EV_INFRASTRUCTURE_CORRELATION showing EVs per charging point (laadpalen)
 - LAADPALEN_PER_POSTCODE showing charging points by 4-digit postal code
 - EV_YOY_GROWTH showing year-over-year EV adoption trends
+- NATIONAL_EV_SUMMARY showing a single-row national rollup
+- BRANDSTOF_PER_POSTCODE_DATUM showing fuel registrations by month
+- BRANDSTOF_PER_POSTCODE showing fuel distribution by 4-digit postal code
 
 > **Stop and count:** How many DAG definitions did we write? How many trigger configurations? How many monitoring dashboards did we set up? Zero. The pipeline just works.
 
@@ -852,7 +976,7 @@ Your warehouse should show:
 
 This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
 
-> **💡 Talking Point:** This is zero-copy sharing — dealers query your live data directly. No exports, no transfers, no stale copies. When you update the data, they see it immediately. And it works across any cloud provider.
+> **Key Insight:** This is zero-copy sharing — dealers query your live data directly. No exports, no transfers, no stale copies. When you update the data, they see it immediately. And it works across any cloud provider.
 
 ### 5.1 Create a Data Share
 
@@ -869,6 +993,7 @@ GRANT USAGE ON SCHEMA PON_EV_LAB.ANALYTICS TO SHARE PON_DEALER_SHARE;
 
 GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_DEALER_SHARE;
 GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH TO SHARE PON_DEALER_SHARE;
+GRANT SELECT ON TABLE PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION TO SHARE PON_DEALER_SHARE;
 ```
 
 ### 5.3 Verify the Share Contents
@@ -882,7 +1007,7 @@ DESCRIBE SHARE PON_DEALER_SHARE;
 You should see:
 - `kind`: OUTBOUND
 - `database_name`: PON_EV_LAB
-- Objects: EV_GROWTH_TRENDS, EV_YOY_GROWTH
+- Objects: EV_GROWTH_TRENDS, EV_YOY_GROWTH, EV_INFRASTRUCTURE_CORRELATION
 
 ### 5.4 View in Snowsight UI
 
@@ -912,11 +1037,12 @@ SHOW GRANTS OF SHARE PON_DEALER_SHARE;
 SHOW SHARES;
 
 -- Create a database from the share
-CREATE DATABASE PON_EV_DATA FROM SHARE <provider_account>.PON_DEALER_SHARE;
+CREATE DATABASE PON_DEALER_DATA FROM SHARE <provider_account>.PON_DEALER_SHARE;
 
 -- Query the shared data (live, no copy!)
-SELECT * FROM PON_EV_DATA.ANALYTICS.EV_GROWTH_TRENDS LIMIT 10;
-SELECT * FROM PON_EV_DATA.ANALYTICS.EV_YOY_GROWTH;
+SELECT * FROM PON_DEALER_DATA.ANALYTICS.EV_GROWTH_TRENDS LIMIT 10;
+SELECT * FROM PON_DEALER_DATA.ANALYTICS.EV_YOY_GROWTH;
+SELECT * FROM PON_DEALER_DATA.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION LIMIT 10;
 ```
 
 ### Key Benefits for Pon
@@ -1067,7 +1193,7 @@ SELECT
     UNIT
 FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
 WHERE GEO_ID = 'country/NLD'
-  AND VARIABLE_NAME ILIKE '%transport%co2%'
+  AND VARIABLE = 'transportation_co2_climate_watch'
 ORDER BY year DESC
 LIMIT 20;
 
@@ -1077,8 +1203,7 @@ SELECT
     ROUND(SUM(VALUE) / 1000000, 2) as emissions_mt_co2e
 FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
 WHERE GEO_ID = 'country/NLD'
-  AND VARIABLE_NAME ILIKE '%total%co2%'
-  AND VARIABLE NOT LIKE '%lulucf%'
+  AND VARIABLE = 'total_excluding_lulucf_co2_climate_watch'
 GROUP BY YEAR(DATE)
 ORDER BY year DESC
 LIMIT 10;
@@ -1103,36 +1228,38 @@ GROUP BY YEAR(TIME);
 CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_TRANSPORT_EMISSIONS AS
 SELECT 
     YEAR(DATE) as year,
-    ROUND(VALUE / 1000000, 2) as transport_emissions_mt
+    ROUND(VALUE / 1000000, 1) as transport_co2_mt
 FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
 WHERE GEO_ID = 'country/NLD'
-  AND VARIABLE = 'transportation_co2_pik';
+  AND VARIABLE = 'transportation_co2_climate_watch'
+  AND YEAR(DATE) >= 2010
+ORDER BY year;
 
 -- Join with EV growth for correlation analysis
 CREATE OR REPLACE VIEW PON_EV_LAB.ANALYTICS.EV_WEATHER_EMISSIONS AS
 SELECT 
-    e.year,
-    e.total_evs,
-    e.yoy_growth_pct,
+    e.registration_year as year,
+    e.ev_count as total_evs,
+    e.yoy_growth_percent,
     w.avg_temp_celsius,
     w.freezing_hours,
-    t.transport_emissions_mt
+    t.transport_co2_mt
 FROM PON_EV_LAB.ANALYTICS.EV_YOY_GROWTH e
-LEFT JOIN PON_EV_LAB.CURATED.NL_WEATHER_YEARLY w ON e.year = w.year
-LEFT JOIN PON_EV_LAB.CURATED.NL_TRANSPORT_EMISSIONS t ON e.year = t.year
-WHERE e.year >= 2015
-ORDER BY e.year;
+LEFT JOIN PON_EV_LAB.CURATED.NL_WEATHER_YEARLY w ON e.registration_year = w.year
+LEFT JOIN PON_EV_LAB.CURATED.NL_TRANSPORT_EMISSIONS t ON e.registration_year = t.year
+WHERE e.registration_year >= 2015
+ORDER BY e.registration_year;
 
 -- Total emissions for ESG comparison
 CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_TOTAL_EMISSIONS AS
 SELECT 
     YEAR(DATE) as year,
-    ROUND(SUM(VALUE) / 1000000, 2) as total_emissions_mt
+    ROUND(VALUE / 1000000, 1) as total_co2_mt
 FROM SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE.CLIMATE_WATCH_TIMESERIES
 WHERE GEO_ID = 'country/NLD'
-  AND VARIABLE_NAME ILIKE '%total%co2%'
-  AND VARIABLE NOT LIKE '%lulucf%'
-GROUP BY YEAR(DATE);
+  AND VARIABLE = 'total_excluding_lulucf_co2_climate_watch'
+  AND YEAR(DATE) >= 2010
+ORDER BY year;
 
 -- Monthly weather patterns for seasonal marketing
 CREATE OR REPLACE VIEW PON_EV_LAB.CURATED.NL_MONTHLY_WEATHER AS
@@ -1146,47 +1273,54 @@ WHERE YEAR(TIME) >= 2020
 GROUP BY MONTH(TIME);
 
 -- Regional weather vs EV adoption correlation
+-- Maps postal codes to Dutch regions (10-39=Randstad, 50-66=Zuid, 88-99=Noord)
 CREATE OR REPLACE VIEW PON_EV_LAB.ANALYTICS.REGIONAL_WEATHER_EV_CORRELATION AS
 WITH weather_by_region AS (
     SELECT 
         CASE 
-            WHEN STATIONNAME IN ('De Bilt', 'Schiphol', 'Rotterdam', 'Amsterdam') THEN 'Randstad'
-            WHEN STATIONNAME IN ('Groningen', 'Leeuwarden', 'Eelde') THEN 'Noord'
-            WHEN STATIONNAME IN ('Maastricht', 'Eindhoven', 'Volkel') THEN 'Zuid'
+            WHEN STATIONNAME LIKE '%SCHIPHOL%' OR STATIONNAME LIKE '%AMSTERDAM%' 
+                 OR STATIONNAME LIKE '%ROTTERDAM%' OR STATIONNAME LIKE '%DEN HAAG%'
+                 OR STATIONNAME LIKE '%UTRECHT%' OR STATIONNAME LIKE '%HAARLEM%'
+                 OR STATIONNAME LIKE '%VALKENBURG%' OR STATIONNAME LIKE '%VOORSCHOTEN%' THEN 'Randstad'
+            WHEN STATIONNAME LIKE '%GRONINGEN%' OR STATIONNAME LIKE '%LEEUWARDEN%' 
+                 OR STATIONNAME LIKE '%EELDE%' OR STATIONNAME LIKE '%HOOGEVEEN%' THEN 'Noord'
+            WHEN STATIONNAME LIKE '%MAASTRICHT%' OR STATIONNAME LIKE '%EINDHOVEN%' 
+                 OR STATIONNAME LIKE '%VOLKEL%' OR STATIONNAME LIKE '%ARCEN%' THEN 'Zuid'
             ELSE 'Overig'
         END AS climate_region,
-        ROUND(AVG(TEMP), 1) as avg_temp_c,
-        MIN(TEMP) as coldest_temp_c,
-        COUNT(CASE WHEN TEMP < 0 THEN 1 END) as total_freezing_hours,
-        COUNT(CASE WHEN TEMP < -5 THEN 1 END) as total_extreme_cold_hours
+        AVG(TEMP) AS avg_temp_c,
+        MIN(TEMP) AS coldest_temp_c,
+        SUM(CASE WHEN TEMP < 0 THEN 1 ELSE 0 END) AS total_freezing_hours,
+        SUM(CASE WHEN TEMP < -5 THEN 1 ELSE 0 END) AS total_extreme_cold_hours
     FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
-    WHERE YEAR(TIME) >= 2020
+    WHERE TEMP IS NOT NULL
     GROUP BY 1
 ),
 ev_by_region AS (
     SELECT 
         CASE 
-            WHEN LEFT(kenteken, 2) IN ('BH', 'BJ', 'BK', 'BL', 'BN', 'BP') THEN 'Randstad'
-            WHEN LEFT(kenteken, 2) IN ('GJ', 'GK', 'GL', 'GN', 'GP', 'GR') THEN 'Noord'
-            WHEN LEFT(kenteken, 2) IN ('LH', 'LJ', 'LK', 'LL', 'LN', 'LP') THEN 'Zuid'
+            WHEN CAST(LEFT(postcode, 2) AS INT) BETWEEN 10 AND 39 THEN 'Randstad'
+            WHEN CAST(LEFT(postcode, 2) AS INT) BETWEEN 88 AND 99 THEN 'Noord'
+            WHEN CAST(LEFT(postcode, 2) AS INT) BETWEEN 50 AND 66 THEN 'Zuid'
             ELSE 'Overig'
         END AS region,
-        COUNT(*) as total_vehicles,
-        SUM(CASE WHEN is_ev_or_hybrid THEN 1 ELSE 0 END) as total_evs
-    FROM PON_EV_LAB.CURATED.VEHICLES_WITH_FUEL
+        SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) AS total_evs,
+        SUM(aantal) AS total_vehicles
+    FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+    WHERE voertuigsoort = 'Personenauto'
     GROUP BY 1
 )
 SELECT 
     w.climate_region,
-    e.total_evs,
-    e.total_vehicles,
-    ROUND(e.total_evs * 100.0 / NULLIF(e.total_vehicles, 0), 1) as ev_share_pct,
-    w.avg_temp_c,
-    w.coldest_temp_c,
+    COALESCE(e.total_evs, 0) AS total_evs,
+    COALESCE(e.total_vehicles, 0) AS total_vehicles,
+    ROUND(100.0 * COALESCE(e.total_evs, 0) / NULLIF(e.total_vehicles, 0), 1) AS ev_share_pct,
+    ROUND(w.avg_temp_c, 1) AS avg_temp_c,
+    ROUND(w.coldest_temp_c, 1) AS coldest_temp_c,
     w.total_freezing_hours,
     w.total_extreme_cold_hours
 FROM weather_by_region w
-JOIN ev_by_region e ON w.climate_region = e.region
+LEFT JOIN ev_by_region e ON w.climate_region = e.region
 ORDER BY ev_share_pct DESC;
 ```
 
@@ -1238,14 +1372,14 @@ Expected insight: As EV adoption increases, transport emissions should begin to 
 
 Build an interactive dashboard directly in Snowflake. No external hosting, no separate deployment. This is the visualization layer that brings everything together — and **answers the business question**.
 
-> **💡 Talking Point:** The Streamlit app runs natively in Snowflake. No Docker, no Kubernetes, no separate infrastructure. It queries your Dynamic Tables directly and inherits all your governance controls.
+> **Key Insight:** The Streamlit app runs natively in Snowflake. No Docker, no Kubernetes, no separate infrastructure. It queries your Dynamic Tables directly and inherits all your governance controls.
 
 ### 7.1 Create the Streamlit App
 
 1. In Snowsight, go to **Projects** > **Streamlit**
 2. Click **+ Streamlit App**
 3. Configure:
-   - **Name:** `EV_TRANSITION_DASHBOARD`
+   - **Name:** `PON_EV_INTELLIGENCE`
    - **Warehouse:** `PON_ANALYTICS_WH`
    - **Database/Schema:** `PON_EV_LAB.ANALYTICS`
 4. Click **Create**
@@ -1255,7 +1389,7 @@ Build an interactive dashboard directly in Snowflake. No external hosting, no se
 Copy the code from `streamlit_app.py` in this repository. The full source code creates a professional dashboard with:
 
 - **Pon-branded SVG banner** matching the repo style
-- **5 tabs**: Regional Analysis, EV vs Infrastructure, Trends & Insights, Fuel Mix, Platform
+- **7 tabs**: Regional Analysis, EV vs Infrastructure, Trends & Insights, Market Intelligence, Fuel Mix, Platform, Fleet Telemetry
 - **Dutch postal code mapping** for human-readable region names
 - **Data-driven insights** from live Dynamic Table queries
 - **Business question answered** in Tab 2 with explicit correlation analysis
@@ -1285,11 +1419,13 @@ Click **Run** in the top-right corner. Your dashboard is now live.
 You should see an interactive dashboard with:
 - Pon-branded banner with logo, EV car, and Snowflake icon
 - Key metrics: Total EVs, National EV Share, Top Region, Charging Points, Regions
-- **Tab 1**: Regional EV adoption bar chart and top 5 regions
+- **Tab 1**: Regional EV adoption bar chart and top regions
 - **Tab 2**: EV vs Infrastructure correlation analysis
 - **Tab 3**: Trends with year-over-year growth and insights
-- **Tab 4**: Fuel mix distribution (Electric, Petrol, Diesel)
-- **Tab 5**: Platform architecture and "Why Snowflake?" comparison
+- **Tab 4**: Market Intelligence (weather, emissions, seasonal patterns)
+- **Tab 5**: Fuel mix distribution (Electric, Petrol, Diesel)
+- **Tab 6**: Platform architecture and "Why Snowflake?" comparison
+- **Tab 7**: Fleet Telemetry (bonus module data)
 
 ---
 
@@ -1345,17 +1481,22 @@ PON_EV_LAB (Database)
 │   ├── EV_BY_REGION (Dynamic Table)
 │   ├── CHARGING_BY_AREA (Dynamic Table)
 │   ├── VEHICLES_WITH_FUEL (Dynamic Table)
+│   ├── VEHICLE_STATUS (Dynamic Table - Bonus)
 │   ├── NL_WEATHER_YEARLY (View - Marketplace)
 │   ├── NL_TRANSPORT_EMISSIONS (View - Marketplace)
 │   ├── NL_TOTAL_EMISSIONS (View - Marketplace)
 │   └── NL_MONTHLY_WEATHER (View - Marketplace)
 └── ANALYTICS (Schema)
+    ├── NATIONAL_EV_SUMMARY (Dynamic Table)
     ├── EV_INFRASTRUCTURE_CORRELATION (Dynamic Table)
     ├── LAADPALEN_PER_POSTCODE (Dynamic Table)
+    ├── BRANDSTOF_PER_POSTCODE_DATUM (Dynamic Table)
+    ├── BRANDSTOF_PER_POSTCODE (Dynamic Table)
     ├── EV_GROWTH_TRENDS (Dynamic Table)
     ├── EV_YOY_GROWTH (Dynamic Table)
     ├── EV_WEATHER_EMISSIONS (View)
     ├── REGIONAL_WEATHER_EV_CORRELATION (View)
+    ├── FLEET_ALERTS (View - Bonus)
     └── PON_EV_INTELLIGENCE (Streamlit App)
 
 PON_ANALYTICS_WH (Warehouse)
@@ -1500,7 +1641,125 @@ In ~10 minutes with natural language, you created:
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## Appendix: Cleanup
+## Appendix A: Data Processing Decisions
+
+This appendix documents every data sourcing, sampling, and join decision made in this lab so that attendees understand why the pipeline is built the way it is — and how results relate to the PDF use case requirements.
+
+### A.1 PDF-to-Lab Dataset Mapping
+
+The use case PDF (*EV transitie NL*) specifies **5 source datasets** (BRON) and **2 target models** (DOEL). Here is how each maps to our lab tables:
+
+| # | PDF Source (BRON) | Dataset ID | PDF Volume | Lab Table | Lab Rows | Coverage |
+|---|-------------------|------------|-----------|-----------|----------|----------|
+| 1 | Voertuigen met brandstof per postcode | `8wbe-pu7d` | 46,644 | `RAW.VEHICLES_BY_POSTCODE_RAW` | ~47K | **100%** |
+| 2 | SPECIFICATIES PARKEERGEBIED | `b3us-f26s` | 3,139 | `RAW.CHARGING_CAPACITY_RAW` | 3,139 | **100%** |
+| 3 | Parkeeradres | `ygq4-hh5q` | 3,792 | `RAW.PARKING_ADDRESS_RAW` | ~3.4K | **89%** |
+| 4 | Gekentekende_voertuigen | `m9d7-ebf2` | 16.7M | `RAW.VEHICLES_RAW` | 50K | 0.3% |
+| 5 | Gekentekende_voertuigen_brandstof | `8ys7-d773` | 16.7M | `RAW.VEHICLES_FUEL_RAW` | 50K | 0.3% |
+
+| # | PDF Target (DOEL) | Lab Dynamic Table | Rows |
+|---|-------------------|-------------------|------|
+| 1 | brandst per postcode per datum | `ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM` | ~350 |
+| 2 | Laadpalen per postcode | `ANALYTICS.LAADPALEN_PER_POSTCODE` | ~55 |
+
+### A.2 Why Some Datasets Are Sampled
+
+Datasets 1–3 are small enough to load completely within a 2-hour lab. Datasets 4 and 5 each have **16.7 million rows** — loading them fully would take ~30 minutes and consume significant warehouse credits. For a hands-on lab, we load 50K rows from each (50 pages × 1,000 records per API call).
+
+This sampling only affects the supplementary target model (`BRANDSTOF_PER_POSTCODE_DATUM`) and its downstream analytics (`EV_GROWTH_TRENDS`, `EV_YOY_GROWTH`). The **core business question** — *"Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?"* — is answered entirely by the 100%-loaded datasets.
+
+### A.3 Kenteken Ordering: Why `$order=kenteken` Matters
+
+The `BRANDSTOF_PER_POSTCODE_DATUM` target model requires a JOIN between `VEHICLES_RAW` and `VEHICLES_FUEL_RAW` on the `kenteken` (license plate) column. Both source APIs contain 16.7M records, but we only load 50K from each. Without explicit ordering, the Socrata API returns each dataset in a **different default order** — meaning the 50K records from one API have almost no kenteken overlap with the 50K from the other.
+
+| Approach | Kenteken Overlap | BRANDSTOF_PER_POSTCODE_DATUM Rows | Usable? |
+|----------|-----------------|-----------------------------------|---------|
+| No `$order` (API default) | ~183 (0.4%) | 15 | No |
+| `$order=kenteken` on both | ~46,624 (93%) | 350 | Yes |
+
+By ordering both API calls alphabetically by kenteken, the first 50K records from each dataset largely overlap. This is the key insight: **when sampling two large datasets that must be joined, ensure both samples come from the same key range**.
+
+> **For production**: Remove the `$order` parameter and increase ROWCOUNT. With full datasets, overlap is guaranteed since every kenteken appears in both.
+
+### A.4 Socrata API Limitation
+
+The RDW fuel dataset (`8ys7-d773`) returns an HTTP 500 Server Error when using `$order=kenteken` beyond offset ~15,000. This is a Socrata platform limitation on ordered queries over very large datasets (16.7M rows). The vehicle dataset (`m9d7-ebf2`) handles ordered pagination up to 50K without issues.
+
+**Tradeoff**: We load 50K fuel records (not 150K as originally planned) to stay within the API's ordered-query capacity. This is acceptable because:
+- 50K records with 93% join overlap is far more useful than 150K records with 0.4% overlap
+- The core EV-vs-laadpalen analysis uses `VEHICLES_BY_POSTCODE_RAW` (100% loaded), not this dataset
+- The 50K sample still produces meaningful time-series data spanning 2015–2026
+
+### A.5 Join Logic: How the Target Models Are Built
+
+**Target Model 1: `BRANDSTOF_PER_POSTCODE_DATUM`**
+```
+VEHICLES_RAW (kenteken, datum_eerste_tenaamstelling_in_nederland, ...)
+      │
+      └──JOIN on kenteken──→ VEHICLES_FUEL_RAW (kenteken, brandstof_omschrijving)
+                                    │
+                                    ↓
+                            CURATED.VEHICLES_WITH_FUEL
+                            (kenteken + fuel type + registration date)
+                                    │
+                                    ↓
+                            ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM
+                            (datum, brandstof, aantal)
+```
+- The kenteken join enriches vehicle registrations with their fuel type
+- Registration dates are truncated to month (`DATE_TRUNC('month', ...)`)
+- The RDW `m9d7-ebf2` API does not expose owner postcode (privacy), so this target model covers the time+fuel dimensions only
+- The postcode+fuel dimension is covered by `BRANDSTOF_PER_POSTCODE` (from source 3, 100% loaded)
+- Together, both tables fulfill the PDF DOEL requirement across all dimensions
+- Aggregation: `COUNT(*)` grouped by month and fuel category
+
+**Target Model 2: `LAADPALEN_PER_POSTCODE`**
+```
+PARKING_ADDRESS_RAW (areamanagerid, zipcode, ...)
+      │                                          
+      └──JOIN on areamanagerid──→ CHARGING_CAPACITY_RAW (areamanagerid, chargingpointcapacity)
+                                          │
+                                          ↓
+                                  CURATED.CHARGING_BY_AREA
+                                  (areaid + zipcode + capacity)
+                                          │
+                                          ↓
+                                  ANALYTICS.LAADPALEN_PER_POSTCODE
+                                  (postcode, total_laadpalen)
+```
+- The PDF specifies `parkingaddressreference = areamanagerid` as the join key (NOT `areaid`)
+- Parking data is filtered to `parkingaddresstype = 'F'` per PDF requirements
+- `SUM(chargingpointcapacity)` gives the total charging points per postcode
+
+**The core correlation** (`EV_INFRASTRUCTURE_CORRELATION`) then joins these two pipelines:
+- `EV_BY_REGION` (from VEHICLES_BY_POSTCODE_RAW) at 2-digit postal area level
+- `LAADPALEN_PER_POSTCODE` aggregated to 2-digit using `LEFT(postcode, 2)`
+- Result: EVs per charging point by region — directly answering the PDF business question
+
+### A.6 Data Lineage
+
+```
+RAW (Bronze)                 CURATED (Silver)              ANALYTICS (Gold)
+──────────────               ────────────────              ────────────────
+VEHICLES_BY_POSTCODE_RAW ──→ EV_BY_REGION ──────────────→ EV_INFRASTRUCTURE_CORRELATION
+                              │                            NATIONAL_EV_SUMMARY
+PARKING_ADDRESS_RAW ────────→ CHARGING_BY_AREA ──────────→ LAADPALEN_PER_POSTCODE
+CHARGING_CAPACITY_RAW ──────┘                              │
+                                                           └→ EV_INFRASTRUCTURE_CORRELATION
+
+VEHICLES_RAW ───────────────→ VEHICLES_WITH_FUEL ────────→ EV_GROWTH_TRENDS
+VEHICLES_FUEL_RAW ──────────┘                              EV_YOY_GROWTH
+                                                           BRANDSTOF_PER_POSTCODE_DATUM
+                                                           BRANDSTOF_PER_POSTCODE
+```
+
+All arrows represent Dynamic Tables with `TARGET_LAG = '1 hour'`. When source data changes, Snowflake automatically propagates updates through the entire pipeline — no orchestration required.
+
+---
+
+<p align="center"><img src="assets/divider.svg" width="80%"></p>
+
+## Appendix B: Cleanup
 
 If you want to remove all lab resources:
 

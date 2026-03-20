@@ -199,7 +199,7 @@ SHOW SCHEMAS IN DATABASE PON_EV_LAB;
 SHOW TABLES IN SCHEMA PON_EV_LAB.RAW;
 ```
 
-You should see 3 schemas and 5 tables.
+You should see 3 custom schemas (RAW, CURATED, ANALYTICS — plus the auto-created PUBLIC and INFORMATION_SCHEMA) and 5 tables.
 
 > **Stop and notice:** How much cluster configuration have we done so far? None. The compute is serverless — it just works.
 
@@ -966,7 +966,7 @@ Your warehouse should show:
 
 ## Module 5: Secure Data Sharing
 
-**Duration: 15 minutes**
+**Duration: 15 minutes** · *Instructor-led demo*
 
 > **Why This Matters for Pon**
 > 
@@ -1769,10 +1769,6 @@ VEHICLES_RAW (kenteken, datum_eerste_tenaamstelling_in_nederland, ...)
       └──JOIN on kenteken──→ VEHICLES_FUEL_RAW (kenteken, brandstof_omschrijving)
                                     │
                                     ↓
-                            CURATED.VEHICLES_WITH_FUEL
-                            (kenteken + fuel type + registration date)
-                                    │
-                                    ↓
                             ANALYTICS.BRANDSTOF_PER_POSTCODE_DATUM
                             (datum, brandstof, aantal)
 ```
@@ -1785,17 +1781,13 @@ VEHICLES_RAW (kenteken, datum_eerste_tenaamstelling_in_nederland, ...)
 
 **Target Model 2: `LAADPALEN_PER_POSTCODE`**
 ```
-PARKING_ADDRESS_RAW (areamanagerid, zipcode, ...)
+PARKING_ADDRESS_RAW (parkingaddressreference, zipcode, ...)
       │                                          
-      └──JOIN on areamanagerid──→ CHARGING_CAPACITY_RAW (areamanagerid, chargingpointcapacity)
-                                          │
-                                          ↓
-                                  CURATED.CHARGING_BY_AREA
-                                  (areaid + zipcode + capacity)
+      └──JOIN on parkingaddressreference = areamanagerid──→ CHARGING_CAPACITY_RAW (areamanagerid, chargingpointcapacity)
                                           │
                                           ↓
                                   ANALYTICS.LAADPALEN_PER_POSTCODE
-                                  (postcode, total_laadpalen)
+                                  (postcode, aantal)
 ```
 - The PDF specifies `parkingaddressreference = areamanagerid` as the join key (NOT `areaid`)
 - Parking data is filtered to `parkingaddresstype = 'F'` per PDF requirements
@@ -1812,18 +1804,20 @@ PARKING_ADDRESS_RAW (areamanagerid, zipcode, ...)
 RAW (Bronze)                 CURATED (Silver)              ANALYTICS (Gold)
 ──────────────               ────────────────              ────────────────
 VEHICLES_BY_POSTCODE_RAW ──→ EV_BY_REGION ──────────────→ EV_INFRASTRUCTURE_CORRELATION
-                    │                                      NATIONAL_EV_SUMMARY
+                    │              └────────────────────→ NATIONAL_EV_SUMMARY
                     └──────────────────────────────────→ BRANDSTOF_PER_POSTCODE
 
+CHARGING_CAPACITY_RAW ─────→ CHARGING_BY_AREA
+
 PARKING_ADDRESS_RAW ───────┐
-CHARGING_CAPACITY_RAW ─────┤→ CHARGING_BY_AREA
-                           └──────────────────────────→ LAADPALEN_PER_POSTCODE
+CHARGING_CAPACITY_RAW ─────┴───────────────────────────→ LAADPALEN_PER_POSTCODE
                                                          │
                                                          └→ EV_INFRASTRUCTURE_CORRELATION
 
-VEHICLES_RAW ───────────────→ VEHICLES_WITH_FUEL ────────→ EV_GROWTH_TRENDS
-VEHICLES_FUEL_RAW ──────────┘                              EV_YOY_GROWTH
-                                                           BRANDSTOF_PER_POSTCODE_DATUM
+VEHICLES_FUEL_RAW ─────────→ VEHICLES_WITH_FUEL ────────→ EV_GROWTH_TRENDS
+                                                    ├───→ EV_YOY_GROWTH
+VEHICLES_RAW ──────────────┐
+VEHICLES_FUEL_RAW ─────────┴───────────────────────────→ BRANDSTOF_PER_POSTCODE_DATUM
 ```
 
 All arrows represent Dynamic Tables with `TARGET_LAG = '1 hour'`. When source data changes, Snowflake automatically propagates updates through the entire pipeline — no orchestration required.
@@ -1841,7 +1835,6 @@ DROP DATABASE IF EXISTS PON_EV_LAB;
 DROP WAREHOUSE IF EXISTS PON_ANALYTICS_WH;
 DROP RESOURCE MONITOR IF EXISTS PON_LAB_MONITOR;
 DROP SHARE IF EXISTS PON_DEALER_SHARE;
-DROP SHARE IF EXISTS PON_OEM_SHARE;
 DROP EXTERNAL ACCESS INTEGRATION IF EXISTS rdw_api_access;
 DROP NETWORK RULE IF EXISTS rdw_api_rule;
 ```

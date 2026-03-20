@@ -61,15 +61,14 @@ SELECT * FROM PON_DEALER_DATA.ANALYTICS.EV_YOY_GROWTH;
 */
 
 -- =============================================================================
--- Additional Share for OEM Partners (example)
+-- Additional Share for OEM Partners (conceptual - see lab guide Section 5.6)
 -- =============================================================================
-
-CREATE OR REPLACE SHARE PON_OEM_SHARE
-    COMMENT = 'EV market data for OEM partners (anonymized)';
-
-GRANT USAGE ON DATABASE PON_EV_LAB TO SHARE PON_OEM_SHARE;
-GRANT USAGE ON SCHEMA ANALYTICS TO SHARE PON_OEM_SHARE;
-GRANT SELECT ON TABLE ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_OEM_SHARE;
+-- In production, Pon would create separate shares per partner type:
+-- CREATE OR REPLACE SHARE PON_OEM_SHARE
+--     COMMENT = 'EV market data for OEM partners (anonymized)';
+-- GRANT USAGE ON DATABASE PON_EV_LAB TO SHARE PON_OEM_SHARE;
+-- GRANT USAGE ON SCHEMA ANALYTICS TO SHARE PON_OEM_SHARE;
+-- GRANT SELECT ON TABLE ANALYTICS.EV_GROWTH_TRENDS TO SHARE PON_OEM_SHARE;
 
 -- =============================================================================
 -- Key Benefits Summary

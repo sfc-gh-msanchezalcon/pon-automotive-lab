@@ -174,10 +174,10 @@ with tab2:
         df_corr['Region'] = df_corr['POSTAL_AREA'].apply(get_region_name)
         
         st.markdown("**EV Adoption Rate vs Charging Infrastructure**")
-        chart_data = df_corr[['Region', 'EV_PERCENTAGE', 'CHARGING_POINTS']].copy()
-        chart_data.columns = ['Region', 'EV Adoption %', 'Charging Points']
-        st.scatter_chart(chart_data, x='EV Adoption %', y='Charging Points')
-        st.caption("Each dot = a region. Higher EV adoption should correlate with more charging points.")
+        chart_data = df_corr[['Region', 'ELECTRIC_VEHICLES', 'CHARGING_POINTS']].copy()
+        chart_data.columns = ['Region', 'Electric Vehicles (÷100)', 'Charging Points']
+        chart_data['Electric Vehicles (÷100)'] = chart_data['Electric Vehicles (÷100)'] / 100
+        st.bar_chart(chart_data.set_index('Region'))
         
     with col2:
         st.markdown('<p class="section-header">Key Findings</p>', unsafe_allow_html=True)

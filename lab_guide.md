@@ -1526,6 +1526,76 @@ All lab SQL scripts are in the `scripts/` folder — ready for CI/CD integration
 
 > **Key Pattern:** All `CREATE` statements use `CREATE OR REPLACE` for idempotent deployments. Run the same script 10 times, get the same result.
 
+### Coming Soon: DCM Projects (Database Change Management)
+
+> **⚠️ Private Preview (March 2026)** — Available on AWS, Azure, GCP. Not yet GA.
+
+Everything we built manually in this lab — the database, schemas, warehouses, Dynamic Tables, roles, grants — can be defined **declaratively as code** with DCM Projects. You describe the desired state; Snowflake figures out what to change. Think Terraform, but native to Snowflake with full pipeline lifecycle support.
+
+**Example — The Pon EV pipeline as a DCM Project:**
+
+```sql
+-- manifest.yml
+-- name: pon_ev_analytics
+-- definitions:
+--   - definitions.sql
+
+-- definitions.sql:
+
+DEFINE DATABASE {{env}}_PON_EV_LAB;
+
+DEFINE SCHEMA {{env}}_PON_EV_LAB.RAW;
+DEFINE SCHEMA {{env}}_PON_EV_LAB.CURATED;
+DEFINE SCHEMA {{env}}_PON_EV_LAB.ANALYTICS;
+
+DEFINE WAREHOUSE {{env}}_PON_ANALYTICS_WH WITH
+    warehouse_size = '{{wh_size}}'
+    auto_suspend = 60;
+
+DEFINE DYNAMIC TABLE {{env}}_PON_EV_LAB.CURATED.EV_BY_REGION
+    TARGET_LAG = '1 hour'
+    WAREHOUSE = {{env}}_PON_ANALYTICS_WH
+AS
+    SELECT LEFT(postcode, 2) AS postal_area,
+        SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) AS electric_vehicles,
+        SUM(aantal) AS total_vehicles,
+        ROUND(100.0 * SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END)
+            / NULLIF(SUM(aantal), 0), 2) AS ev_percentage
+    FROM {{env}}_PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
+    WHERE voertuigsoort = 'Personenauto'
+    GROUP BY LEFT(postcode, 2);
+
+-- Deploy to dev, staging, and production:
+EXECUTE DCM PROJECT PON_EV_LAB.PROJECTS.PON_PIPELINE PLAN
+    USING (env => 'DEV', wh_size => 'XSMALL');
+
+EXECUTE DCM PROJECT PON_EV_LAB.PROJECTS.PON_PIPELINE DEPLOY
+    USING (env => 'PROD', wh_size => 'LARGE');
+
+-- Full pipeline lifecycle:
+EXECUTE DCM PROJECT ... REFRESH ALL;   -- Refresh all Dynamic Tables
+EXECUTE DCM PROJECT ... TEST ALL;      -- Run data quality expectations
+EXECUTE DCM PROJECT ... PREVIEW        -- Sample data before deploying
+    PROD_PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION LIMIT 100;
+```
+
+**Why DCM Projects vs the competition:**
+
+| Capability | Snowflake DCM | Databricks | MS Fabric | dbt |
+|---|---|---|---|---|
+| Declarative definitions | Native `DEFINE` | Terraform (3rd party) | ARM/Bicep templates | N/A |
+| Pipeline management (DTs) | Built-in | No DT equivalent | No DT equivalent | SELECT only |
+| Data quality in deployment | `TEST ALL` (native) | Great Expectations | No native equiv | dbt test |
+| Multi-env with one codebase | Jinja templating | Manual configs | Param files | Profiles |
+| Plan before deploy | `PLAN` command | `terraform plan` | What-if analysis | `dbt compile` |
+| Refresh all pipelines | `REFRESH ALL` | Manual job triggers | Manual | N/A |
+| Preview data pre-deploy | `PREVIEW` command | Not available | Not available | N/A |
+| Object scope | **All** SF objects | Limited to Unity Catalog | ARM-scoped | Transformations only |
+
+> **Key differentiator vs dbt:** dbt manages transformations only (SELECT statements). DCM manages **everything** — databases, schemas, warehouses, roles, grants, Dynamic Tables, tasks, streams, AND data quality — all in one project. No external orchestrator needed.
+>
+> **Why this matters for Pon:** One tool for infrastructure + pipelines + governance + quality gates. Deploy identical pipelines across dev/staging/prod with Jinja variables. No Terraform, no dbt, no Airflow — just Snowflake.
+
 ---
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>

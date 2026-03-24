@@ -3,8 +3,8 @@
 PON AUTOMOTIVE - EV TRANSITION NETHERLANDS
 Module 5: Secure Data Sharing
 =============================================================================
-Snowflake's killer feature: Share live data across organizations without
-copying data, without ETL pipelines, with instant access control.
+Share live data across organizations — dealers, partners, and the Pon Group —
+without copying data, without ETL pipelines, with instant access control.
 =============================================================================
 */
 

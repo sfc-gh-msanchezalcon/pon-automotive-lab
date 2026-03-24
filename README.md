@@ -16,13 +16,21 @@
 
 <p align="center"><img src="assets/divider.svg" width="80%"></p>
 
-## The Business Challenge
+## The Story: Why This Lab Exists
 
-**Pon Automotive** manages one of the largest vehicle portfolios in the Netherlands. With the accelerating shift to electric vehicles, leadership needs to answer:
+**Pon Automotive** manages one of the largest vehicle portfolios in the Netherlands. Like every automotive company in Europe, the shift to electric vehicles is reshaping the business — from which models to stock, to where charging partnerships make sense, to how to advise dealers on regional inventory.
+
+Today, answering these questions means pulling data from DB2, running manual exports, waiting for overnight batch jobs, and assembling spreadsheets. By the time the analysis is ready, the data is already stale. Dealers get CSV exports via email — ungoverned copies that drift out of sync within days.
+
+**The rest of the Pon Group is already on Snowflake.** Pon Automotive is the last major division to modernize its data platform. This creates a unique opportunity: by choosing Snowflake, Pon Automotive can share live data across the entire Pon Group — dealers, OEM partners, and sister companies — without building integration pipelines. The data is simply *there*, governed and current.
+
+This lab puts that vision into practice. You will build a complete data engineering solution — from live government API ingestion to an interactive dashboard — entirely within a single platform. No external schedulers, no cluster management, no separate BI tools.
+
+### The Business Question
 
 > *"Which region in the Netherlands has the fastest EV growth, and does that correlate with charging infrastructure availability?"*
 
-This insight drives decisions about dealership inventory, charging station partnerships, regional marketing, and fleet transition planning.
+This drives real decisions: dealership inventory allocation, charging station partnerships, regional marketing strategy, and fleet transition planning.
 
 ### The Answer (Spoiler)
 
@@ -32,35 +40,47 @@ By the end of this lab, your dashboard will show:
 |---------|---------|
 | **Highest EV adoption** | Amsterdam area leads with ~25% EV share |
 | **Biggest infrastructure gap** | Regions with 500+ EVs per charging location |
-| **Correlation** | High EV adoption ≠ sufficient charging — expansion opportunities identified |
+| **Correlation** | High EV adoption does not guarantee sufficient charging — expansion opportunities identified |
 
 This is real RDW data, analyzed in real-time via Dynamic Tables, visualized in Streamlit.
 
-## Module-to-Business Mapping
+## Where You Are Today vs Where This Lab Takes You
 
-Each lab module directly addresses a specific Pon business challenge:
+| Challenge | Today (DB2 / Manual) | After This Lab |
+|-----------|---------------------|----------------|
+| **Getting RDW data** | Manual CSV exports, FTP transfers, days of delay | Live API calls from inside the platform — data arrives in minutes |
+| **Keeping models fresh** | Overnight batch jobs, stale by morning | Dynamic Tables refresh automatically — you set a freshness target, the platform handles the rest |
+| **Handling 50 concurrent users** | Sessions time out, 6-hour query waits | Compute scales out transparently — every user gets dedicated resources |
+| **Sharing data with dealers** | Email CSV attachments, ungoverned copies | Zero-copy live sharing — dealers see current data, access revoked in seconds |
+| **Adding external context** | Procurement, contracts, ETL pipelines | Marketplace datasets appear instantly, no data movement |
+| **Building dashboards** | Separate BI tool, data extracts, sync issues | Dashboard runs inside the platform, queries live data directly |
+| **Controlling cloud costs** | Unpredictable bills, no hard limits | Resource monitors with automatic suspension — budget exceeded means compute stops, not a surprise invoice |
 
-| Module | Pon's Pain Point | Snowflake Solution | Business Outcome |
-|--------|-----------------|-------------------|------------------|
-| **1. Schema Design** | Data silos prevent unified view | Medallion architecture | Single source of truth for leadership |
-| **2. API Ingestion** | Manual CSV exports are slow | External Access Integration | Real-time RDW data without intermediaries |
-| **3. Dynamic Tables** | Overnight batch jobs create stale data | Automatic refresh with TARGET_LAG | Always-current target models (brandst per postcode, laadpalen per postcode) |
-| **4. Cost Control** | 6-hour queries during peak usage | Multi-cluster + Resource Monitors | No one waits, predictable costs |
-| **5. Data Sharing** | Manual exports to dealers are ungoverned | Secure Data Sharing | Live, governed access for dealer network |
-| **6. Marketplace** | Need external context (weather, demographics) | 2,500+ datasets, zero ETL | Enrich internal data instantly |
-| **7. Dashboard** | No unified view for leadership | Streamlit in Snowflake | Answer the core business question directly |
+## The Pon Group Advantage
+
+**This is the most important consideration in this evaluation.**
+
+The rest of the Pon Group already runs on Snowflake. Choosing Snowflake for Pon Automotive means:
+
+- **Instant data sharing across divisions** — no integration projects, no ETL, no copies. Pon Automotive's EV analytics become available to the entire group the moment you grant access.
+- **Unified governance** — one set of access policies, one audit trail, one security model across the entire Pon data estate.
+- **Shared Marketplace subscriptions** — weather data, demographics, and emissions data acquired once, available to every Pon division.
+- **Common skills and tooling** — engineers can move between Pon divisions without retraining. SQL works the same everywhere.
+
+With an alternative platform, Pon Automotive would need to build and maintain cross-platform integration pipelines to share data with the rest of the group — an ongoing cost that grows with every new data product.
+
+> **Ask every vendor in this evaluation:** *"How would Pon Automotive share live, governed data with the rest of the Pon Group, which runs on Snowflake, without building ETL pipelines?"*
 
 ## What You Will Build
 
-A complete data engineering solution using **real Dutch government data**, all within Snowflake. No external tools, no complex orchestration, no cluster management.
+A complete data engineering solution using **real Dutch government data**, all within a single platform:
 
-By the end you will have:
-
-1. **Live API Data Ingestion**: Real-time data from RDW (Dutch Vehicle Authority) using External Access Integration
-2. **Automated Data Pipelines**: Dynamic Tables that refresh automatically with zero orchestration
-3. **Cost-Controlled Analytics**: Multi-cluster warehouses with resource monitors
-4. **Cross-Organization Data Sharing**: Secure sharing with dealers (no data copies)
-5. **Pon EV Intelligence Dashboard**: Streamlit in Snowflake for regional analytics
+1. **Live API Data Ingestion** — Real-time data from RDW (Dutch Vehicle Authority), fetched directly from SQL
+2. **Automated Data Pipelines** — Dynamic Tables that refresh automatically, no external scheduler
+3. **Cost-Controlled Analytics** — Multi-cluster warehouses with hard budget limits
+4. **Cross-Organization Data Sharing** — Live, governed access for the dealer network (no copies)
+5. **Marketplace Enrichment** — Weather and emissions data added instantly, no ETL
+6. **Interactive Dashboard** — Streamlit app that answers the business question directly
 
 ### Architecture
 
@@ -117,106 +137,53 @@ By the end you will have:
     └────────────────────────────────────────────────────────────────────┘
 ```
 
-## Why Snowflake?
+## How This Lab Maps to the Use Case Requirements
 
-Pon's pain points and how Snowflake addresses them:
+Every requirement from the *EV transitie NL* use case document is addressed:
 
-| Pain Point | Current State | Snowflake Solution |
-|------------|--------------|-------------------|
-| **6-hour query times** | Slow processing | Instant elastic scaling |
-| **Manual scaling** | Cluster management | Zero infrastructure management |
-| **Concurrency issues** | Sessions getting closed | Multi-cluster auto-scale |
-| **High maintenance costs** | Complex pipelines | Dynamic Tables (no orchestration) |
-| **Data silos** | Copies everywhere | Secure Data Sharing (live, no copies) |
-
-### Platform Comparison
-
-| Capability | Snowflake | Databricks | Microsoft Fabric |
-|------------|-----------|------------|------------------|
-| **Cluster Management** | None (fully serverless) | Serverless SQL available; classic clusters require config | Capacity units to manage |
-| **Startup Time** | Instant (<1s) | Serverless: ~15s; Classic: 2-5 min | Depends on capacity mode |
-| **Concurrent Users** | Auto-scale out (transparent) | Auto-scale available | Shared capacity model |
-| **Declarative Pipelines** | Dynamic Tables (SQL-native) | Delta Live Tables (Python/SQL) | Dataflows (Power Query) |
-| **Cost Control** | Resource Monitors (hard limits) | Budgets + DBU tracking | Capacity allocation |
-| **Cross-Org Data Sharing** | Native zero-copy (any cloud) | Delta Sharing (Unity Catalog required) | External sharing (limited) |
-| **Embedded BI** | Streamlit (native) | Dashboards (native) | Power BI (native) |
-
-## How This Lab Maps to Pon's Requirements
-
-| Pon's Criteria | Lab Module | How We Address It |
-|----------------|------------|-------------------|
-| **Business Question**: "Which region has fastest EV growth and does it correlate with charging?" | Module 7 | Dashboard Tab 2 shows EV adoption vs charging infrastructure by region with explicit answer |
-| **RDW Open Data APIs** with pagination (1000 row limit) | Module 2 | Python UDF with External Access handles `$limit` and `$offset` pattern |
-| **Target Model: brandst per postcode per datum** | Module 3 | Dynamic Table `BRANDSTOF_PER_POSTCODE_DATUM` (Datum, Brandstof, Aantal) + `BRANDSTOF_PER_POSTCODE` (Postcode, Brandstof, Aantal) — split because RDW does not expose postcode in the kenteken API |
-| **Target Model: Laadpalen per postcode** | Module 3 | Dynamic Table `LAADPALEN_PER_POSTCODE` with Postcode, Aantal |
-| **RAW → CURATED → ANALYTICS** pipeline | Module 3 | Three-schema medallion architecture with Dynamic Tables |
+| Pon's Requirement | Lab Module | How It's Delivered |
+|-------------------|------------|-------------------|
+| **Core question**: "Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?" | Module 7 | Dashboard Tab 2 shows EV adoption vs charging infrastructure by region |
+| **5 RDW Open Data APIs** with pagination (1000 row limit) | Module 2 | Python UDF with External Access handles `$limit` and `$offset` natively |
+| **Target Model: brandst per postcode per datum** | Module 3 | Dynamic Table `BRANDSTOF_PER_POSTCODE_DATUM` (Datum, Brandstof, Aantal) |
+| **Target Model: Laadpalen per postcode** | Module 3 | Dynamic Table `LAADPALEN_PER_POSTCODE` (Postcode, Aantal) |
+| **RAW → CURATED → ANALYTICS pipeline** | Module 3 | Three-schema medallion architecture with automatic refresh |
 | **No manual orchestration** | Module 3 | Dynamic Tables with `TARGET_LAG` — no external scheduler needed |
 | **Cost control and scaling** | Module 4 | Multi-cluster warehouse + Resource Monitor with hard limits |
-| **Share data with dealers** (no copies) | Module 5 | Secure Data Sharing with zero-copy live access |
-| **Single platform** (no external tools) | All | Everything runs in Snowflake — ingestion, pipelines, dashboards |
+| **Share data with dealers** (no copies) | Module 5 | Zero-copy live access, revocable in seconds |
+| **Single platform** (no external tools) | All | Ingestion, pipelines, dashboards, sharing — one platform |
 
-## Features Covered
+## Questions to Ask Every Vendor
 
-| Feature | Description | Module |
-|---------|-------------|--------|
-| **External Access Integration** | Securely call external APIs from Snowflake | 2 |
-| **Python UDFs** | Custom functions for API pagination | 2 |
-| **LATERAL FLATTEN** | Efficient JSON array processing | 2 |
-| **Dynamic Tables** | Declarative pipelines with automatic refresh | 3 |
-| **Multi-Cluster Warehouses** | Auto-scale for concurrent workloads | 4 |
-| **Resource Monitors** | Automatic cost control and alerts | 4 |
-| **Secure Data Sharing** | Zero-copy sharing across organizations | 5 |
-| **Snowflake Marketplace** | Instant access to third-party data | 6 |
-| **Streamlit in Snowflake** | Native dashboards, no external hosting | 7 |
+When evaluating platforms, these questions reveal real architectural differences:
 
-## Data Sources (per PDF Requirements)
+| Question | Why It Matters for Pon |
+|----------|----------------------|
+| **"Can we call the RDW API directly from a SQL query, without a separate ingestion tool?"** | Pon needs to ingest from 5+ government APIs. Fewer moving parts means less maintenance. |
+| **"How do we keep downstream models fresh without an external orchestrator?"** | Overnight batch staleness is a key pain point. Declarative freshness targets eliminate scheduler complexity. |
+| **"If 50 dealers run reports at 9am Monday, does anyone wait?"** | Concurrency under load is where DB2 fails today. The scaling model matters. |
+| **"How does Pon Automotive share live data with the rest of the Pon Group without building integration pipelines?"** | The Pon Group is already on Snowflake. Cross-division data sharing is the highest-value capability. |
+| **"What happens when we exceed our compute budget — do we get a bill or does compute stop?"** | Moving from predictable on-prem costs to cloud consumption requires hard guardrails, not dashboards. |
+| **"Can we enrich our vehicle data with weather and emissions data without building an ETL pipeline?"** | Third-party data enrichment should be instant, not a project. |
 
-All data comes from **RDW Open Data** (Dutch Vehicle Authority) - no synthetic data:
+## Data Sources
 
-| Dataset | RDW ID | Required Columns (PDF) | Records |
-|---------|--------|------------------------|---------|
+All data comes from **RDW Open Data** (Dutch Vehicle Authority) — real government data, not synthetic:
+
+| Dataset | RDW ID | Required Columns | Records |
+|---------|--------|-----------------|---------|
 | **Gekentekende_voertuigen** | `m9d7-ebf2` | Kenteken, datum_eerste_tenaamstelling | 50,000 |
 | **Gekentekende_voertuigen_brandstof** | `8ys7-d773` | Kenteken, brandstof_omschrijving | 50,000 |
 | **Voertuigen per postcode** | `8wbe-pu7d` | Postcode, Brandstof, Aantal | 46,645 |
-| **Parkeeradres** | `ygq4-hh5q` | parkingaddressreference, zipcode (filter: parkingaddresstype='F') | 3,382 |
+| **Parkeeradres** | `ygq4-hh5q` | parkingaddressreference, zipcode | 3,382 |
 | **SPECIFICATIES PARKEERGEBIED** | `b3us-f26s` | areamanagerid, chargingpointcapacity | 3,139 |
 
-### Data Loading Strategy
-
-> **Critical for RFP evaluation:** The datasets below are intentionally loaded at different coverage levels.
-
-| Dataset | PDF Volume | Lab Load | Coverage | Purpose |
-|---------|-----------|----------|----------|---------|
-| **Voertuigen per postcode** | 46,644 | 46,645 | **100%** | Primary source for regional EV analysis |
-| **SPECIFICATIES PARKEERGEBIED** | 3,139 | 3,139 | **100%** | Required for laadpalen (charging) correlation |
-| **Parkeeradres** | 3,792 | 3,382 | **89%** | Filtered per PDF: `parkingaddresstype='F'` |
-| **Gekentekende_voertuigen** | 16.7M | 50K | 0.3% | Sampled for time-series (optional analysis) |
-| **Gekentekende_voertuigen_brandstof** | 16.7M | 50K | 0.3% | Sampled for fuel trends (optional analysis) |
-
-**Why this approach:**
-
-1. **The core business question** from the PDF (*"Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?"*) requires:
-   - Vehicles by postcode → **100% loaded**
-   - Charging infrastructure → **100% loaded**
-   
-2. **The two sampled datasets** (16.7M rows each) are used only for supplementary time-series analysis, not the core deliverable.
-
-3. **Loading full 16.7M rows** would require ~2 hours and additional compute credits. For production, simply increase the `ROWCOUNT` parameters in the ingestion scripts.
-
-### Data Model: Laadpalen per Postcode
-
-To create the target model "Laadpalen per postcode" (Postcode, Aantal), join the two parking/charging datasets:
-
-```
-Parkeeradres.parkingaddressreference = SPECIFICATIES.areamanagerid
-```
-
-Then aggregate `chargingpointcapacity` by `zipcode` from Parkeeradres.
+The core datasets (vehicles by postcode, parking, charging) are loaded at **100% coverage**. The two large datasets (16.7M rows each) are sampled at 50K for the lab — increase `ROWCOUNT` for production.
 
 ## Prerequisites
 
 - Snowflake account with **ACCOUNTADMIN** access (trial accounts work)
-- Web browser (everything runs inside Snowflake)
+- Web browser (everything runs inside Snowflake — no local tooling required)
 
 ## Lab Agenda
 
@@ -231,7 +198,7 @@ Then aggregate `chargingpointcapacity` by `zipcode` from Parkeeradres.
 | 6 | Marketplace Data Enrichment | 15 min |
 | 7 | Streamlit Dashboard | 15 min |
 | 8 | Wrap-up & Discussion | 10 min |
-| **Bonus** | **Cortex Code Pipeline** | 15 min |
+| **Bonus** | **AI-Assisted Development** | 15 min |
 
 **Total: ~2.5 hours** (+ optional bonus)
 
@@ -258,22 +225,22 @@ pon-automotive-lab/
 │   ├── 04_scaling_cost.sql   ← Module 4: Warehouses and monitors
 │   ├── 05_data_sharing.sql   ← Module 5: Secure sharing
 │   ├── 06_marketplace.sql    ← Module 6: Marketplace data queries
-│   ├── 06_bonus_cortex_code.sql ← Module 9: Bonus Cortex Code pipeline
+│   ├── 06_bonus_cortex_code.sql ← Bonus: AI-assisted pipeline development
 │   ├── 07_demo_governance.sql   ← Demo: Governance features
 │   └── 08_reader_account_setup.sql ← Demo: Reader account setup
 └── streamlit_app.py          ← Module 7: Dashboard code
 ```
 
-## About This Lab
+## What This Lab Demonstrates
 
-Built for **Pon Automotive** to demonstrate how Snowflake powers strategic EV planning. Real RDW data answers the core question: *Which region in the Netherlands has the fastest EV growth?*
+This lab was built for the Pon Automotive data platform evaluation. It answers the use case requirements with real data, real pipelines, and a real dashboard — all running on a single platform with zero external tooling.
 
-**Key differentiators:**
-- Zero infrastructure management (no clusters to configure)
-- Automatic pipelines (Dynamic Tables replace orchestration)
-- Instant scalability (warehouses scale in seconds)
-- Native data sharing (share live data with dealers, no copies)
-- Unified platform (data engineering to dashboards in one place)
+**What makes this approach different:**
+- **Zero infrastructure management** — no clusters to configure, no servers to patch, no capacity to pre-provision
+- **Automatic pipelines** — declare what you want, not how to schedule it
+- **Instant scalability** — compute scales in seconds, not minutes
+- **Native data sharing** — live data flows to dealers and the Pon Group without building integrations
+- **Unified platform** — data engineering, analytics, and dashboards in one place with one governance model
 
 ---
 

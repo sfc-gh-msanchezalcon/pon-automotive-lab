@@ -109,20 +109,22 @@ GROUP BY warehouse_name;
 -- ============================================================================
 /*
 RESOURCE MONITOR:
-- "Notice we have automatic cost control - 100 credits/month budget"
+- "Notice we have automatic cost control — 100 credits/month budget"
 - "At 75%, we get an alert. At 100%, the warehouse auto-suspends"
-- "No surprise bills - this is built into the platform"
-- "Databricks requires custom scripts for this level of control"
+- "No surprise bills — the platform enforces hard limits, not just notifications"
+- Ask other vendors: "When we hit our budget, does compute stop or do we just get a bill?"
 
 DATA SHARING:
 - "We're sharing 3 analytics tables with our dealer network"
-- "This is ZERO-COPY sharing - dealers query our live data"
+- "This is ZERO-COPY sharing — dealers query our live data"
 - "No ETL, no sync jobs, no stale data"
 - "When our Dynamic Tables refresh, dealers see fresh data immediately"
-- "Full audit trail - we know exactly who accessed what"
+- "Full audit trail — we know exactly who accessed what"
 
-COMPETITIVE ADVANTAGE:
-- "Databricks Delta Sharing requires data copying"
-- "MS Fabric sharing is limited to Azure ecosystem"
-- "Snowflake shares across ANY cloud, ANY region, ZERO copies"
+PON GROUP ADVANTAGE:
+- "The rest of the Pon Group is already on Snowflake"
+- "Everything we built today can be shared across the Pon Group immediately"
+- "This is a configuration step, not an integration project"
+- Ask other vendors: "How would Pon Automotive share live data with the rest of
+  the Pon Group, which runs on Snowflake, without building ETL pipelines?"
 */

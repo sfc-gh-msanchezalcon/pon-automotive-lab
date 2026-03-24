@@ -738,17 +738,29 @@ with tab6:
     
     st.markdown("---")
     
-    st.markdown("### ⚡ Why Snowflake?")
+    st.markdown("### What This Lab Demonstrates")
     st.markdown("""
-    | Capability | Traditional Approach | Snowflake Approach |
-    |------------|---------------------|-------------------|
-    | **API Ingestion** | Separate tool + compute + scheduler | Built-in `EXTERNAL ACCESS` — unified platform |
-    | **Data Pipelines** | Orchestrator + DAGs + monitoring | `CREATE DYNAMIC TABLE` — declarative SQL |
-    | **Real-time Refresh** | CDC setup + streaming infrastructure | `TARGET_LAG = '1 hour'` — one parameter |
-    | **Third-party Data** | Procurement + ETL + storage | Marketplace — instant, zero-copy |
-    | **Partner Data Sharing** | Export → Transfer → Import | `GRANT TO SHARE` — zero-copy, live access |
-    | **Governance** | Multiple tools, manual integration | Native lineage, RBAC, automatic audit |
-    | **Analytics UI** | Separate BI tool + data extracts | Streamlit in Snowflake — same platform |
+    | Challenge (Today) | What You Saw in This Lab |
+    |-------------------|-------------------------|
+    | **Manual CSV exports from DB2** | Live API ingestion with `EXTERNAL ACCESS` — data arrives in minutes |
+    | **Overnight batch jobs** | Dynamic Tables with `TARGET_LAG` — automatic freshness, no scheduler |
+    | **6-hour query waits, session timeouts** | Multi-cluster warehouse scales out transparently |
+    | **Emailed spreadsheets to dealers** | `GRANT TO SHARE` — zero-copy, live, revocable access |
+    | **Separate procurement for external data** | Marketplace — instant weather and emissions enrichment |
+    | **Multiple tools for governance** | Native lineage, RBAC, and automatic audit trail |
+    | **Separate BI tool + data extracts** | Streamlit in Snowflake — dashboard queries live data |
+    """)
+    
+    st.markdown("---")
+    
+    st.markdown("### The Pon Group Advantage")
+    st.markdown("""
+    The rest of the Pon Group already runs on Snowflake. Choosing Snowflake for Pon Automotive means:
+    
+    - **Instant data sharing** across all Pon divisions — no integration projects
+    - **Unified governance** — one security model across the entire Pon data estate
+    - **Shared Marketplace data** — acquire once, use everywhere
+    - **Common skills** — engineers move between divisions without retraining
     """)
 
 # ============ TAB 7: FLEET TELEMETRY (BONUS) ============

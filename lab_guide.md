@@ -18,18 +18,26 @@
 
 ## Welcome
 
-In this lab, you'll build a complete data engineering solution to analyze the **Electric Vehicle transition in the Netherlands**. You'll work with real government data from RDW (Dutch Vehicle Authority) and create automated pipelines that answer a key business question:
+In this lab, you will build a complete data engineering solution to analyze the **Electric Vehicle transition in the Netherlands** — the exact use case from Pon's *EV transitie NL* evaluation document.
 
+You are software engineers evaluating a new data platform. Today you work with DB2 — you know the pain of overnight batch jobs, manual CSV exports, concurrency limits, and the operational overhead of maintaining on-prem infrastructure. This lab is designed to show you what changes when you move to a modern cloud data platform, using your own business question and real government data.
+
+> *"Welke regio heeft de snelste groei van EV's en zie je dat terug in aantal beschikbare laadpalen?"*
+>
 > *"Which region has the fastest EV growth, and does that correlate with charging infrastructure?"*
+
+### Why This Matters for Pon
+
+The rest of the Pon Group already runs on Snowflake. Pon Automotive is evaluating its next data platform. Choosing Snowflake means Pon Automotive can share live, governed data with every other Pon division instantly — no integration projects, no ETL pipelines, no data copies. This is the single largest architectural advantage in this evaluation.
 
 ### What Makes This Lab Different
 
-This lab focuses on the **data engineering fundamentals** that matter most:
+This lab addresses the data engineering challenges you face today:
 
-- Real API data: Not synthetic, not CSV uploads, actual live government APIs
-- Zero orchestration: Dynamic Tables eliminate the need for external schedulers
-- Cost control built-in: Resource monitors prevent runaway spending
-- Production-ready sharing: Share live data with partners, no copies
+- **Real API data**: Live RDW government APIs, not synthetic data or CSV uploads
+- **No external schedulers**: Dynamic Tables replace overnight batch jobs with automatic freshness
+- **Cost guardrails**: Resource monitors prevent runaway cloud spending — compute stops, not a surprise bill
+- **Live data sharing**: Dealers and the Pon Group see current data, no more emailed spreadsheets
 
 ### The Journey
 
@@ -974,9 +982,11 @@ Your warehouse should show:
 > 
 > **Secure Data Sharing** gives dealers live, governed access to curated analytics. When Pon updates their data, dealers see it immediately. When a dealer relationship ends, access is revoked in seconds - no chasing down spreadsheet copies. This transforms data from a liability into a strategic asset for the dealer network.
 
-This is Snowflake's **killer feature**: share live data with external organizations without copying data, without ETL pipelines, with instant access control.
+Secure Data Sharing lets you share live data with external organizations without copying data, without ETL pipelines, and with instant access control. For Pon, this has two dimensions: sharing analytics with the dealer network, and sharing data across the Pon Group — both without building integration pipelines.
 
 > **Key Insight:** This is zero-copy sharing — dealers query your live data directly. No exports, no transfers, no stale copies. When you update the data, they see it immediately. And it works across any cloud provider.
+>
+> **The Pon Group angle:** The rest of Pon already runs on Snowflake. Pon Automotive's EV analytics would be available to every other Pon division the moment you grant access — no project required. Ask every vendor: *"How would we share this data with the rest of the Pon Group without building ETL?"*
 
 ### 5.1 Create a Data Share
 
@@ -1334,13 +1344,13 @@ SELECT * FROM PON_EV_LAB.ANALYTICS.EV_WEATHER_EMISSIONS;
 
 Expected insight: As EV adoption increases, transport emissions should begin to decline (visible in recent years).
 
-### Key Differentiator
+### Questions to Consider
 
-| Platform | Third-party Data Access | Notes |
-|----------|------------------------|-------|
-| **Snowflake** | 2,500+ datasets, instant access | Zero ETL, zero storage duplication |
-| Databricks | Unity Catalog Marketplace | Growing catalog, Delta Sharing based |
-| Fabric | OneLake shortcuts | Microsoft ecosystem focused |
+When evaluating third-party data enrichment, ask each vendor:
+
+- *"Can we add weather or emissions data to our analysis without building an ETL pipeline?"*
+- *"How many pre-built datasets are available, and what does onboarding look like?"*
+- *"If one Pon division acquires a dataset, can others access it without re-purchasing?"*
 
 ### Marketplace Value for Pon
 
@@ -1437,35 +1447,51 @@ You should see an interactive dashboard with:
 
 ### What We Built
 
-| Component | Snowflake Feature | Benefit |
-|-----------|-------------------|---------|
-| API Ingestion | External Access + UDFs | No external tools needed |
-| Data Pipeline | Dynamic Tables | Zero orchestration |
-| Data Quality | Data Metric Functions | Automated validation |
-| Scaling | Multi-cluster Warehouse | Instant, automatic |
-| Cost Control | Resource Monitors | Predictable spend |
-| Data Sharing | Secure Shares | Live data, no copies |
-| Data Enrichment | Marketplace | Instant third-party data |
-| Dashboard | Streamlit in Snowflake | No separate hosting |
-| AI Development | Cortex Code | Natural language to SQL |
+In this lab, you built a complete data engineering solution — from raw API ingestion to an interactive dashboard — entirely within a single platform:
 
-### Snowflake Strengths Demonstrated
+| Component | What We Did | What This Replaces |
+|-----------|-------------|-------------------|
+| API Ingestion | External Access + Python UDFs | Manual CSV downloads, FTP transfers |
+| Data Pipeline | Dynamic Tables with TARGET_LAG | Overnight batch jobs, external schedulers |
+| Scaling | Multi-cluster Warehouse (1-3) | Queue waits, session timeouts |
+| Cost Control | Resource Monitor (hard limit) | Unpredictable cloud bills |
+| Data Sharing | Secure Share (zero-copy) | Emailed CSV exports to dealers |
+| Data Enrichment | Marketplace (weather, emissions) | Procurement + ETL projects |
+| Dashboard | Streamlit in Snowflake | Separate BI tool + data extracts |
 
-**What we showcased:**
-- Instant warehouse startup (no cold-start delays)
-- Zero-copy data sharing (works across clouds)
-- Streamlit natively integrated (no separate deployment)
-- Dynamic Tables (declarative, SQL-native pipelines)
-- External Access (API calls without middleware)
-- Data Metric Functions (built-in quality monitoring)
-- Pipeline lineage (automatic dependency tracking)
-- Cortex Code (AI-assisted development)
+### The Pon Group Advantage
 
-**Why this matters for Pon:**
-- Faster time-to-insight (no infrastructure setup)
-- Lower operational overhead (no cluster management)
-- Simpler data collaboration (share with dealers instantly)
-- Unified platform (data engineering to dashboards)
+Everything you built today can be shared with the rest of the Pon Group immediately:
+
+- **Pon Automotive's EV analytics** → available to sister companies via Secure Data Sharing
+- **Marketplace datasets** (weather, emissions) → shared across all Pon divisions
+- **Governance policies** → consistent access control across the entire Pon data estate
+- **Common SQL skills** → engineers can work across Pon divisions without retraining
+
+With Snowflake, this is a configuration step. With an alternative platform, it would require building and maintaining cross-platform integration pipelines.
+
+### Questions for the Evaluation
+
+As you compare platforms, these questions highlight the architectural differences that matter most for Pon:
+
+1. **API Ingestion**: *"Can we call external APIs directly from SQL, or do we need a separate ingestion tool?"*
+2. **Pipeline Freshness**: *"Can we set a freshness target and let the platform handle scheduling, or do we need an external orchestrator?"*
+3. **Concurrency**: *"When 50 dealers query at the same time, does anyone wait?"*
+4. **Data Sharing**: *"How does Pon Automotive share live data with the rest of the Pon Group without building ETL?"*
+5. **Cost Control**: *"When we hit our budget limit, does compute stop automatically or do we just get a notification?"*
+6. **Third-Party Data**: *"Can we enrich our data with weather and emissions datasets without building a pipeline?"*
+
+### What We Demonstrated
+
+| Capability | What You Saw |
+|------------|-------------|
+| **Instant startup** | Warehouses ready in under a second — no cold-start delays |
+| **Zero-copy sharing** | Dealers query live data, always current, access revoked in seconds |
+| **Declarative pipelines** | Dynamic Tables refresh automatically — you set the target, not the schedule |
+| **Native dashboards** | Streamlit runs inside Snowflake — no separate hosting or data extracts |
+| **Built-in API access** | External Access Integration calls RDW directly from SQL |
+| **Marketplace enrichment** | Weather and emissions data available instantly, no ETL |
+| **Hard cost limits** | Resource monitors stop compute at budget threshold |
 
 ### Resources Created
 
@@ -1525,76 +1551,6 @@ This lab ran SQL interactively. For production, Snowflake supports multiple CI/C
 All lab SQL scripts are in the `scripts/` folder — ready for CI/CD integration.
 
 > **Key Pattern:** All `CREATE` statements use `CREATE OR REPLACE` for idempotent deployments. Run the same script 10 times, get the same result.
-
-### Coming Soon: DCM Projects (Database Change Management)
-
-> **⚠️ Private Preview (March 2026)** — Available on AWS, Azure, GCP. Not yet GA.
-
-Everything we built manually in this lab — the database, schemas, warehouses, Dynamic Tables, roles, grants — can be defined **declaratively as code** with DCM Projects. You describe the desired state; Snowflake figures out what to change. Think Terraform, but native to Snowflake with full pipeline lifecycle support.
-
-**Example — The Pon EV pipeline as a DCM Project:**
-
-```sql
--- manifest.yml
--- name: pon_ev_analytics
--- definitions:
---   - definitions.sql
-
--- definitions.sql:
-
-DEFINE DATABASE {{env}}_PON_EV_LAB;
-
-DEFINE SCHEMA {{env}}_PON_EV_LAB.RAW;
-DEFINE SCHEMA {{env}}_PON_EV_LAB.CURATED;
-DEFINE SCHEMA {{env}}_PON_EV_LAB.ANALYTICS;
-
-DEFINE WAREHOUSE {{env}}_PON_ANALYTICS_WH WITH
-    warehouse_size = '{{wh_size}}'
-    auto_suspend = 60;
-
-DEFINE DYNAMIC TABLE {{env}}_PON_EV_LAB.CURATED.EV_BY_REGION
-    TARGET_LAG = '1 hour'
-    WAREHOUSE = {{env}}_PON_ANALYTICS_WH
-AS
-    SELECT LEFT(postcode, 2) AS postal_area,
-        SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) AS electric_vehicles,
-        SUM(aantal) AS total_vehicles,
-        ROUND(100.0 * SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END)
-            / NULLIF(SUM(aantal), 0), 2) AS ev_percentage
-    FROM {{env}}_PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
-    WHERE voertuigsoort = 'Personenauto'
-    GROUP BY LEFT(postcode, 2);
-
--- Deploy to dev, staging, and production:
-EXECUTE DCM PROJECT PON_EV_LAB.PROJECTS.PON_PIPELINE PLAN
-    USING (env => 'DEV', wh_size => 'XSMALL');
-
-EXECUTE DCM PROJECT PON_EV_LAB.PROJECTS.PON_PIPELINE DEPLOY
-    USING (env => 'PROD', wh_size => 'LARGE');
-
--- Full pipeline lifecycle:
-EXECUTE DCM PROJECT ... REFRESH ALL;   -- Refresh all Dynamic Tables
-EXECUTE DCM PROJECT ... TEST ALL;      -- Run data quality expectations
-EXECUTE DCM PROJECT ... PREVIEW        -- Sample data before deploying
-    PROD_PON_EV_LAB.ANALYTICS.EV_INFRASTRUCTURE_CORRELATION LIMIT 100;
-```
-
-**Why DCM Projects vs the competition:**
-
-| Capability | Snowflake DCM | Databricks | MS Fabric | dbt |
-|---|---|---|---|---|
-| Declarative definitions | Native `DEFINE` | Terraform (3rd party) | ARM/Bicep templates | N/A |
-| Pipeline management (DTs) | Built-in | No DT equivalent | No DT equivalent | SELECT only |
-| Data quality in deployment | `TEST ALL` (native) | Great Expectations | No native equiv | dbt test |
-| Multi-env with one codebase | Jinja templating | Manual configs | Param files | Profiles |
-| Plan before deploy | `PLAN` command | `terraform plan` | What-if analysis | `dbt compile` |
-| Refresh all pipelines | `REFRESH ALL` | Manual job triggers | Manual | N/A |
-| Preview data pre-deploy | `PREVIEW` command | Not available | Not available | N/A |
-| Object scope | **All** SF objects | Limited to Unity Catalog | ARM-scoped | Transformations only |
-
-> **Key differentiator vs dbt:** dbt manages transformations only (SELECT statements). DCM manages **everything** — databases, schemas, warehouses, roles, grants, Dynamic Tables, tasks, streams, AND data quality — all in one project. No external orchestrator needed.
->
-> **Why this matters for Pon:** One tool for infrastructure + pipelines + governance + quality gates. Deploy identical pipelines across dev/staging/prod with Jinja variables. No Terraform, no dbt, no Airflow — just Snowflake.
 
 ---
 
@@ -1705,7 +1661,7 @@ In ~10 minutes with natural language, you created:
 
 **This is the Snowflake developer experience.** No cluster configuration, no SDK installation, no deployment pipeline — just describe what you want.
 
-> **Competitive Advantage:** Neither Databricks nor Fabric has a native conversational SQL builder. Cortex Code accelerates development for both experienced engineers and SQL newcomers.
+> **For Pon:** This kind of AI-assisted development lowers the barrier for DB2 engineers moving to Snowflake. Instead of learning new syntax from documentation, they can describe what they need in natural language and iterate from there.
 
 ---
 

@@ -904,9 +904,12 @@ Now let's enhance our warehouse with scaling and cost controls.
 
 ### 4.1 Enable Multi-Cluster Scaling
 
+> **Edition requirement:** Multi-cluster warehouses require **Enterprise edition or higher**. If your account is Standard edition, skip this step — everything else in the lab still works.
+
 Upgrade the warehouse to handle concurrent users:
 
 ```sql
+-- Requires Enterprise edition. On Standard this will error — safe to skip.
 ALTER WAREHOUSE PON_ANALYTICS_WH SET
     MIN_CLUSTER_COUNT = 1
     MAX_CLUSTER_COUNT = 3

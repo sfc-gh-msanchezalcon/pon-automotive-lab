@@ -10,10 +10,11 @@ Demonstrates Snowflake's instant scaling and automatic cost guardrails.
 USE DATABASE PON_EV_LAB;
 
 -- =============================================================================
--- Multi-Cluster Warehouse
+-- Multi-Cluster Warehouse (Enterprise edition or higher)
 -- =============================================================================
 -- Creates a warehouse that automatically scales for concurrent users.
 -- No cluster management, no spin-up wait times.
+-- NOTE: Requires Enterprise edition. On Standard edition this will error — safe to skip.
 
 ALTER WAREHOUSE PON_ANALYTICS_WH SET
     MIN_CLUSTER_COUNT = 1

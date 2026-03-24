@@ -182,7 +182,7 @@ The core datasets (vehicles by postcode, parking, charging) are loaded at **100%
 
 ## Prerequisites
 
-- Snowflake account with **ACCOUNTADMIN** access (trial accounts work)
+- Snowflake account with **ACCOUNTADMIN** access — a [free trial](https://signup.snowflake.com/) works perfectly (30 days, $400 credits). **Select Enterprise edition** during signup to get multi-cluster warehouses in Module 4. If you pick Standard, everything works except that one step.
 - Web browser (everything runs inside Snowflake — no local tooling required)
 
 ## Lab Agenda

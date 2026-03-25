@@ -1287,51 +1287,48 @@ GROUP BY MONTH(TIME);
 
 -- Regional weather vs EV adoption correlation
 -- Maps postal codes to Dutch regions (10-39=Randstad, 50-66=Zuid, 88-99=Noord)
+-- Uses curated EV_BY_REGION DT and recent weather (2020+) for relevance
 CREATE OR REPLACE VIEW PON_EV_LAB.ANALYTICS.REGIONAL_WEATHER_EV_CORRELATION AS
 WITH weather_by_region AS (
-    SELECT 
-        CASE 
-            WHEN STATIONNAME LIKE '%SCHIPHOL%' OR STATIONNAME LIKE '%AMSTERDAM%' 
+    SELECT
+        CASE
+            WHEN STATIONNAME LIKE '%SCHIPHOL%' OR STATIONNAME LIKE '%AMSTERDAM%'
                  OR STATIONNAME LIKE '%ROTTERDAM%' OR STATIONNAME LIKE '%DEN HAAG%'
                  OR STATIONNAME LIKE '%UTRECHT%' OR STATIONNAME LIKE '%HAARLEM%'
                  OR STATIONNAME LIKE '%VALKENBURG%' OR STATIONNAME LIKE '%VOORSCHOTEN%' THEN 'Randstad'
-            WHEN STATIONNAME LIKE '%GRONINGEN%' OR STATIONNAME LIKE '%LEEUWARDEN%' 
+            WHEN STATIONNAME LIKE '%GRONINGEN%' OR STATIONNAME LIKE '%LEEUWARDEN%'
                  OR STATIONNAME LIKE '%EELDE%' OR STATIONNAME LIKE '%HOOGEVEEN%' THEN 'Noord'
-            WHEN STATIONNAME LIKE '%MAASTRICHT%' OR STATIONNAME LIKE '%EINDHOVEN%' 
+            WHEN STATIONNAME LIKE '%MAASTRICHT%' OR STATIONNAME LIKE '%EINDHOVEN%'
                  OR STATIONNAME LIKE '%VOLKEL%' OR STATIONNAME LIKE '%ARCEN%' THEN 'Zuid'
             ELSE 'Overig'
         END AS climate_region,
-        AVG(TEMP) AS avg_temp_c,
-        MIN(TEMP) AS coldest_temp_c,
-        SUM(CASE WHEN TEMP < 0 THEN 1 ELSE 0 END) AS total_freezing_hours,
-        SUM(CASE WHEN TEMP < -5 THEN 1 ELSE 0 END) AS total_extreme_cold_hours
+        ROUND(AVG(TEMP), 1) AS avg_temp,
+        COUNT(CASE WHEN TEMP < 0 THEN 1 END) AS total_freezing_hours,
+        COUNT(CASE WHEN TEMP < -5 THEN 1 END) AS total_extreme_cold_hours
     FROM DUTCH_WEATHER_DATA_KNMI.PUBLIC.KNMI_HOURLY_IN_SITU_METEOROLOGICAL_OBSERVATIONS_VALIDATED
-    WHERE TEMP IS NOT NULL
+    WHERE YEAR(TIME) >= 2020
     GROUP BY 1
 ),
 ev_by_region AS (
-    SELECT 
-        CASE 
-            WHEN CAST(LEFT(postcode, 2) AS INT) BETWEEN 10 AND 39 THEN 'Randstad'
-            WHEN CAST(LEFT(postcode, 2) AS INT) BETWEEN 88 AND 99 THEN 'Noord'
-            WHEN CAST(LEFT(postcode, 2) AS INT) BETWEEN 50 AND 66 THEN 'Zuid'
+    SELECT
+        CASE
+            WHEN postal_area IN ('10','11','12','13','14','15','16','17','18','19',
+                                 '20','21','22','23','24','25','26','27','28','29',
+                                 '30','31','32','33','34','35','36','37','38','39') THEN 'Randstad'
+            WHEN postal_area IN ('88','89','90','91','92','93','94','95','96','97','98','99') THEN 'Noord'
+            WHEN postal_area IN ('50','51','52','53','54','55','56','57','58','59',
+                                 '60','61','62','63','64','65','66') THEN 'Zuid'
             ELSE 'Overig'
         END AS region,
-        SUM(CASE WHEN brandstof = 'E' THEN aantal ELSE 0 END) AS total_evs,
-        SUM(aantal) AS total_vehicles
-    FROM PON_EV_LAB.RAW.VEHICLES_BY_POSTCODE_RAW
-    WHERE voertuigsoort = 'Personenauto'
+        SUM(electric_vehicles) AS evs,
+        SUM(total_vehicles) AS total,
+        ROUND(SUM(electric_vehicles) * 100.0 / NULLIF(SUM(total_vehicles), 0), 2) AS ev_share_pct
+    FROM PON_EV_LAB.CURATED.EV_BY_REGION
     GROUP BY 1
 )
-SELECT 
-    w.climate_region,
-    COALESCE(e.total_evs, 0) AS total_evs,
-    COALESCE(e.total_vehicles, 0) AS total_vehicles,
-    ROUND(100.0 * COALESCE(e.total_evs, 0) / NULLIF(e.total_vehicles, 0), 1) AS ev_share_pct,
-    ROUND(w.avg_temp_c, 1) AS avg_temp_c,
-    ROUND(w.coldest_temp_c, 1) AS coldest_temp_c,
-    w.total_freezing_hours,
-    w.total_extreme_cold_hours
+SELECT
+    e.region, e.evs, e.total, e.ev_share_pct,
+    w.avg_temp, w.total_freezing_hours, w.total_extreme_cold_hours
 FROM weather_by_region w
 LEFT JOIN ev_by_region e ON w.climate_region = e.region
 ORDER BY ev_share_pct DESC;

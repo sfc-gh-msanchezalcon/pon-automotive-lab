@@ -349,7 +349,7 @@ with tab4:
             
             with col1:
                 st.markdown("**EV Adoption vs Freezing Hours by Climate Region**")
-                chart_data = df_weather_ev[['CLIMATE_REGION', 'EV_SHARE_PCT', 'TOTAL_FREEZING_HOURS']].copy()
+                chart_data = df_weather_ev[['REGION', 'EV_SHARE_PCT', 'TOTAL_FREEZING_HOURS']].copy()
                 chart_data.columns = ['Region', 'EV Share %', 'Freezing Hours (÷1000)']
                 chart_data['Freezing Hours (÷1000)'] = chart_data['Freezing Hours (÷1000)'] / 1000
                 st.bar_chart(chart_data.set_index('Region'))
@@ -360,35 +360,34 @@ with tab4:
                 mildest_region = df_weather_ev.loc[df_weather_ev['TOTAL_FREEZING_HOURS'].idxmin()]
                 harshest_region = df_weather_ev.loc[df_weather_ev['TOTAL_FREEZING_HOURS'].idxmax()]
                 
-                st.metric("Highest EV Share", f"{top_ev_region['CLIMATE_REGION']}", f"{top_ev_region['EV_SHARE_PCT']}%")
-                st.metric("Mildest Climate", f"{mildest_region['CLIMATE_REGION']}", f"{mildest_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hrs")
-                st.metric("Harshest Climate", f"{harshest_region['CLIMATE_REGION']}", f"{harshest_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hrs")
+                st.metric("Highest EV Share", f"{top_ev_region['REGION']}", f"{top_ev_region['EV_SHARE_PCT']}%")
+                st.metric("Mildest Climate", f"{mildest_region['REGION']}", f"{mildest_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hrs")
+                st.metric("Harshest Climate", f"{harshest_region['REGION']}", f"{harshest_region['TOTAL_FREEZING_HOURS']:,.0f} freezing hrs")
                 
-                if top_ev_region['CLIMATE_REGION'] == mildest_region['CLIMATE_REGION']:
+                if top_ev_region['REGION'] == mildest_region['REGION']:
                     st.success(f"""
-                    **✅ Hypothesis Confirmed**
+                    **Hypothesis Confirmed**
                     
-                    **{mildest_region['CLIMATE_REGION']}** has fewest freezing hours ({mildest_region['TOTAL_FREEZING_HOURS']:,.0f}) AND highest EV adoption ({top_ev_region['EV_SHARE_PCT']}%).
+                    **{mildest_region['REGION']}** has fewest freezing hours ({mildest_region['TOTAL_FREEZING_HOURS']:,.0f}) AND highest EV adoption ({top_ev_region['EV_SHARE_PCT']}%).
                     
-                    **Implication:** Target EV marketing in mild-climate regions first.
+                    Target EV marketing in mild-climate regions first.
                     """)
                 else:
                     st.warning(f"""
-                    **⚠️ Hypothesis Partially Supported**
+                    **Hypothesis Partially Supported**
                     
-                    **{top_ev_region['CLIMATE_REGION']}** has highest EV adoption ({top_ev_region['EV_SHARE_PCT']}%) but **{mildest_region['CLIMATE_REGION']}** has mildest climate.
+                    **{top_ev_region['REGION']}** has highest EV adoption ({top_ev_region['EV_SHARE_PCT']}%) but **{mildest_region['REGION']}** has mildest climate.
                     
                     Other factors (urbanization, income) may dominate.
                     """)
             
             st.markdown("---")
             st.dataframe(df_weather_ev.rename(columns={
-                'CLIMATE_REGION': 'Climate Region',
-                'TOTAL_EVS': 'Total EVs',
-                'TOTAL_VEHICLES': 'Total Vehicles', 
+                'REGION': 'Climate Region',
+                'EVS': 'Total EVs',
+                'TOTAL': 'Total Vehicles', 
                 'EV_SHARE_PCT': 'EV Share %',
-                'AVG_TEMP_C': 'Avg Temp (°C)',
-                'COLDEST_TEMP_C': 'Coldest (°C)',
+                'AVG_TEMP': 'Avg Temp (°C)',
                 'TOTAL_FREEZING_HOURS': 'Freezing Hours',
                 'TOTAL_EXTREME_COLD_HOURS': 'Extreme Cold Hours'
             }), use_container_width=True)
@@ -740,15 +739,15 @@ with tab6:
     
     st.markdown("### What This Lab Demonstrates")
     st.markdown("""
-    | Challenge (Today) | What You Saw in This Lab |
-    |-------------------|-------------------------|
-    | **Manual CSV exports from DB2** | Live API ingestion with `EXTERNAL ACCESS` — data arrives in minutes |
-    | **Overnight batch jobs** | Dynamic Tables with `TARGET_LAG` — automatic freshness, no scheduler |
-    | **6-hour query waits, session timeouts** | Multi-cluster warehouse scales out transparently |
-    | **Emailed spreadsheets to dealers** | `GRANT TO SHARE` — zero-copy, live, revocable access |
-    | **Separate procurement for external data** | Marketplace — instant weather and emissions enrichment |
-    | **Multiple tools for governance** | Native lineage, RBAC, and automatic audit trail |
-    | **Separate BI tool + data extracts** | Streamlit in Snowflake — dashboard queries live data |
+    | Capability | What You Saw in Snowflake | Databricks | Microsoft Fabric |
+    |------------|--------------------------|------------|------------------|
+    | **API ingestion** | `EXTERNAL ACCESS` calls APIs from SQL, governed and auditable | Requires notebooks with external libraries or a separate ingestion tool | Azure Data Factory or Dataflow Gen2 (separate service, low-code only) |
+    | **Declarative pipelines** | Dynamic Tables: write a SELECT, set `TARGET_LAG`, freshness is guaranteed | Lakeflow Declarative Pipelines (formerly DLT): SQL/Python framework, requires provisioned or serverless compute clusters | Dataflow Gen2: Power Query-based, scheduled/triggered refresh, no declarative freshness guarantee |
+    | **Elastic compute** | Multi-cluster warehouse auto-scales per-second, workloads are isolated | Shared clusters or serverless SQL warehouses; compute and storage tightly coupled per workspace | Fabric capacity units (CUs) shared across all workloads in a capacity; no per-workload isolation |
+    | **Live data sharing** | `GRANT TO SHARE`: zero-copy, cross-account, cross-cloud, revocable in real time | Delta Sharing: open sharing is read-only tabular data; full feature set (notebooks, models, volumes) requires both parties on Unity Catalog | OneLake shortcuts: storage pointers within the same Fabric tenant; cross-organization sharing requires data copy or Delta Sharing protocol |
+    | **Third-party data** | Marketplace: browse, 2 clicks, data appears as live queryable tables | Databricks Marketplace: listings available, consumer must have Unity Catalog metastore | No native data marketplace; relies on Azure Marketplace or manual integration |
+    | **Built-in governance** | Lineage, RBAC, masking, row access policies: all native, single policy model | Unity Catalog: unified governance but requires metastore setup; lineage and policies are per-metastore | Microsoft Purview: separate Azure service for governance, not embedded in Fabric runtime |
+    | **Embedded analytics** | Streamlit runs inside Snowflake, queries live data, no data extracts | Notebooks or Databricks Apps; no built-in dashboarding framework with live warehouse queries | Power BI: separate service with import or DirectQuery mode; DirectQuery adds latency vs. native execution |
     """)
     
     st.markdown("---")

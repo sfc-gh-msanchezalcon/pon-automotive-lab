@@ -1452,15 +1452,15 @@ You should see an interactive dashboard with:
 
 In this lab, you built a complete data engineering solution — from raw API ingestion to an interactive dashboard — entirely within a single platform:
 
-| Component | What We Did | What This Replaces |
-|-----------|-------------|-------------------|
-| API Ingestion | External Access + Python UDFs | Manual CSV downloads, FTP transfers |
-| Data Pipeline | Dynamic Tables with TARGET_LAG | Overnight batch jobs, external schedulers |
-| Scaling | Multi-cluster Warehouse (1-3) | Queue waits, session timeouts |
-| Cost Control | Resource Monitor (hard limit) | Unpredictable cloud bills |
-| Data Sharing | Secure Share (zero-copy) | Emailed CSV exports to dealers |
-| Data Enrichment | Marketplace (weather, emissions) | Procurement + ETL projects |
-| Dashboard | Streamlit in Snowflake | Separate BI tool + data extracts |
+| Capability | What You Saw in Snowflake | Databricks | Microsoft Fabric |
+|------------|--------------------------|------------|------------------|
+| API Ingestion | `EXTERNAL ACCESS` calls APIs from SQL, governed and auditable | Requires notebooks with external libraries or a separate ingestion tool | Azure Data Factory or Dataflow Gen2 (separate service, low-code only) |
+| Data Pipeline | Dynamic Tables: write a SELECT, set `TARGET_LAG`, freshness is guaranteed | Lakeflow Declarative Pipelines (formerly DLT): SQL/Python framework, requires provisioned or serverless compute clusters | Dataflow Gen2: Power Query-based, scheduled/triggered refresh, no declarative freshness guarantee |
+| Scaling | Multi-cluster warehouse auto-scales per-second, workloads are isolated | Shared clusters or serverless SQL warehouses; compute and storage tightly coupled per workspace | Fabric capacity units (CUs) shared across all workloads in a capacity; no per-workload isolation |
+| Cost Control | Resource Monitor with hard `SUSPEND` limit at budget threshold | Per-cluster budgets or serverless cost limits; no single unified budget control across all compute | Fabric capacity is pre-purchased; no per-workload hard stop, overage pauses all workloads on that capacity |
+| Data Sharing | `GRANT TO SHARE`: zero-copy, cross-account, cross-cloud, revocable in real time | Delta Sharing: open sharing is read-only tabular data; full features (notebooks, models, volumes) require both parties on Unity Catalog | OneLake shortcuts: storage pointers within the same Fabric tenant; cross-organization sharing requires data copy or Delta Sharing protocol |
+| Data Enrichment | Marketplace: browse, 2 clicks, data appears as live queryable tables | Databricks Marketplace: listings available, consumer must have Unity Catalog metastore | No native data marketplace; relies on Azure Marketplace or manual integration |
+| Dashboard | Streamlit runs inside Snowflake, queries live data, no data extracts | Notebooks or Databricks Apps; no built-in dashboarding framework with live warehouse queries | Power BI: separate service with import or DirectQuery mode; DirectQuery adds latency vs. native execution |
 
 ### The Pon Group Advantage
 
@@ -1486,15 +1486,15 @@ As you compare platforms, these questions highlight the architectural difference
 
 ### What We Demonstrated
 
-| Capability | What You Saw |
-|------------|-------------|
-| **Instant startup** | Warehouses ready in under a second — no cold-start delays |
-| **Zero-copy sharing** | Dealers query live data, always current, access revoked in seconds |
-| **Declarative pipelines** | Dynamic Tables refresh automatically — you set the target, not the schedule |
-| **Native dashboards** | Streamlit runs inside Snowflake — no separate hosting or data extracts |
-| **Built-in API access** | External Access Integration calls RDW directly from SQL |
-| **Marketplace enrichment** | Weather and emissions data available instantly, no ETL |
-| **Hard cost limits** | Resource monitors stop compute at budget threshold |
+| Capability | What You Saw in Snowflake | Databricks | Microsoft Fabric |
+|------------|--------------------------|------------|------------------|
+| **Instant startup** | Warehouses ready in under a second, no cold-start delays | Cluster spin-up takes 2-5 minutes for provisioned compute; serverless SQL warehouses reduce but do not eliminate startup latency | Fabric capacity is always-on when purchased; individual workload startup depends on capacity availability |
+| **Zero-copy sharing** | Dealers query live data, always current, access revoked in seconds | Delta Sharing open protocol shares read-only tabular snapshots; live query access requires both parties on Unity Catalog | Lakehouse sharing is read-only within the same tenant; cross-organization requires data copy or Delta Sharing |
+| **Declarative pipelines** | Dynamic Tables refresh automatically based on `TARGET_LAG` | Lakeflow Declarative Pipelines require pipeline configuration and cluster management; no single-parameter freshness target | Dataflow Gen2 requires manual scheduling or pipeline triggers; no declarative freshness SLA |
+| **Native dashboards** | Streamlit runs inside Snowflake, no separate hosting or data extracts | Databricks Apps or embedded notebooks; no native BI dashboarding framework | Power BI is a separate service; DirectQuery mode adds network latency, import mode requires scheduled refresh |
+| **Built-in API access** | External Access Integration calls RDW directly from SQL | Requires notebooks with HTTP libraries or external orchestrators | Requires Data Factory or Logic Apps as a separate service |
+| **Marketplace enrichment** | Weather and emissions data available instantly, no ETL | Databricks Marketplace available; consumer needs Unity Catalog metastore to access listings | No native marketplace; third-party data requires Azure Marketplace purchase + manual integration |
+| **Hard cost limits** | Resource monitors stop compute automatically at budget threshold | Per-cluster or per-serverless budgets; no single account-wide hard stop across all compute types | Capacity is pre-purchased; pausing capacity stops all workloads, no granular per-workload budget |
 
 ### Resources Created
 

@@ -1564,6 +1564,8 @@ All lab SQL scripts are in the `scripts/` folder — ready for CI/CD integration
 
 This bonus module demonstrates Snowflake's AI-assisted development. You'll use Cortex Code to generate tables, transformations, and visualizations conversationally.
 
+> **Dashboard compatibility note:** The Streamlit app's **Fleet Telemetry** tab reads from three objects with specific column names. Each section below shows the Cortex Code prompt **and** the exact SQL fallback. If your generated SQL differs from the expected output, use the fallback SQL to ensure the dashboard works.
+
 ### 9.1 Open Cortex Code
 
 1. In Snowsight, click the **Cortex Code** icon (bottom right sparkle icon)
@@ -1596,7 +1598,34 @@ CREATE OR REPLACE TABLE PON_EV_LAB.RAW.TELEMETRY_RAW (
 
 > "Insert 1000 rows of synthetic telemetry data into TELEMETRY_RAW. Use VINs like 'VW-EV-001' through 'VW-EV-050', 'TESLA-001' through 'TESLA-030', 'BMW-EV-001' through 'BMW-EV-020'. Timestamps in last 24 hours, battery 10-100%, coordinates within Netherlands (lat 51-53, lon 4-7), speed 0-130 kmh, 20% chance of charging=true"
 
-Cortex Code generates synthetic data using `GENERATOR()` and `UNIFORM()`.
+Cortex Code generates synthetic data. If Cortex Code is unavailable, run this directly:
+
+```sql
+INSERT INTO PON_EV_LAB.RAW.TELEMETRY_RAW
+    (vin, event_timestamp, battery_pct, latitude, longitude, speed_kmh, charging, raw_json)
+SELECT
+    CASE 
+        WHEN seq <= 500 THEN 'VW-EV-' || LPAD(UNIFORM(1, 50, RANDOM())::STRING, 3, '0')
+        WHEN seq <= 800 THEN 'TESLA-' || LPAD(UNIFORM(1, 30, RANDOM())::STRING, 3, '0')
+        ELSE 'BMW-EV-' || LPAD(UNIFORM(1, 20, RANDOM())::STRING, 3, '0')
+    END AS vin,
+    DATEADD('second', -UNIFORM(0, 86400, RANDOM()), CURRENT_TIMESTAMP()) AS event_timestamp,
+    UNIFORM(10, 100, RANDOM()) AS battery_pct,
+    UNIFORM(5100, 5300, RANDOM()) / 100.0 AS latitude,
+    UNIFORM(400, 700, RANDOM()) / 100.0 AS longitude,
+    UNIFORM(0, 130, RANDOM()) AS speed_kmh,
+    (UNIFORM(1, 100, RANDOM()) <= 20) AS charging,
+    OBJECT_CONSTRUCT(
+        'vin', vin,
+        'battery_pct', battery_pct,
+        'speed_kmh', speed_kmh,
+        'charging', charging
+    ) AS raw_json
+FROM (
+    SELECT ROW_NUMBER() OVER (ORDER BY SEQ4()) AS seq
+    FROM TABLE(GENERATOR(ROWCOUNT => 1000))
+);
+```
 
 ### 9.4 Create the Dynamic Table
 
@@ -1634,6 +1663,21 @@ GROUP BY vin;
 **Prompt:**
 
 > "Create a view PON_EV_LAB.ANALYTICS.FLEET_ALERTS that summarizes VEHICLE_STATUS by brand: count of vehicles, count with LOW_BATTERY status, count with CHARGING status, average battery percentage, average speed"
+
+> **Important:** The Streamlit dashboard expects these exact column names: `BRAND`, `TOTAL_VEHICLES`, `LOW_BATTERY_COUNT`, `CHARGING_COUNT`, `AVG_BATTERY`, `AVG_SPEED`. If Cortex Code generates different names, use the SQL below instead.
+
+```sql
+CREATE OR REPLACE VIEW PON_EV_LAB.ANALYTICS.FLEET_ALERTS AS
+SELECT 
+    brand,
+    COUNT(*) AS total_vehicles,
+    COUNT(CASE WHEN status = 'LOW_BATTERY' THEN 1 END) AS low_battery_count,
+    COUNT(CASE WHEN status = 'CHARGING' THEN 1 END) AS charging_count,
+    ROUND(AVG(current_battery), 1) AS avg_battery,
+    ROUND(AVG(avg_speed_kmh), 1) AS avg_speed
+FROM PON_EV_LAB.CURATED.VEHICLE_STATUS
+GROUP BY brand;
+```
 
 ### 9.6 Query Your Pipeline
 
